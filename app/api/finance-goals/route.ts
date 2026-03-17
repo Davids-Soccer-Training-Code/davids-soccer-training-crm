@@ -100,33 +100,58 @@ async function hasGroupSessionPaymentsTables(): Promise<boolean> {
   const result = await query(`
     SELECT
       to_regclass('public.group_sessions') IS NOT NULL AS has_group_sessions,
-      to_regclass('public.player_signups') IS NOT NULL AS has_player_signups
+      to_regclass('public.player_signups') IS NOT NULL AS has_player_signups,
+      EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'player_signups'
+          AND column_name = 'signup_price'
+      ) AS has_signup_price,
+      EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'player_signups'
+          AND column_name = 'amount_paid'
+      ) AS has_amount_paid
   `);
 
   const row = result.rows[0] as
-    | { has_group_sessions?: boolean; has_player_signups?: boolean }
+    | {
+        has_group_sessions?: boolean;
+        has_player_signups?: boolean;
+        has_signup_price?: boolean;
+        has_amount_paid?: boolean;
+      }
     | undefined;
 
-  return Boolean(row?.has_group_sessions && row?.has_player_signups);
+  return Boolean(
+    row?.has_group_sessions &&
+      row?.has_player_signups &&
+      (row?.has_signup_price || row?.has_amount_paid)
+  );
 }
 
 const GROUP_SESSION_PAYMENTS_UNION_ALL = `
   UNION ALL
-  SELECT COALESCE(ps.updated_at, ps.created_at) AS paid_at, gs.price::numeric AS amount
+  SELECT
+    COALESCE(ps.updated_at, ps.created_at) AS paid_at,
+    COALESCE(ps.amount_paid, ps.signup_price)::numeric AS amount
   FROM player_signups ps
-  JOIN group_sessions gs ON gs.id = ps.group_session_id
   WHERE ps.has_paid = true
-    AND gs.price IS NOT NULL
+    AND COALESCE(ps.amount_paid, ps.signup_price) IS NOT NULL
     AND COALESCE(ps.updated_at, ps.created_at) <= $1
 `;
 
 const GROUP_SESSION_PAYMENTS_UNION_FILTERED = `
   UNION ALL
-  SELECT COALESCE(ps.updated_at, ps.created_at) AS paid_at, gs.price::numeric AS amount
+  SELECT
+    COALESCE(ps.updated_at, ps.created_at) AS paid_at,
+    COALESCE(ps.amount_paid, ps.signup_price)::numeric AS amount
   FROM player_signups ps
-  JOIN group_sessions gs ON gs.id = ps.group_session_id
   WHERE ps.has_paid = true
-    AND gs.price IS NOT NULL
+    AND COALESCE(ps.amount_paid, ps.signup_price) IS NOT NULL
     AND COALESCE(ps.updated_at, ps.created_at) >= $1
     AND COALESCE(ps.updated_at, ps.created_at) <= $2
     AND COALESCE(ps.updated_at, ps.created_at) <= $3
@@ -134,11 +159,13 @@ const GROUP_SESSION_PAYMENTS_UNION_FILTERED = `
 
 const GROUP_SESSION_WEEK_BREAKDOWN_UNION = `
             UNION ALL
-            SELECT COALESCE(ps.updated_at, ps.created_at) AS paid_at, gs.price::numeric AS amount, 'group_sessions'::text AS source
+            SELECT
+              COALESCE(ps.updated_at, ps.created_at) AS paid_at,
+              COALESCE(ps.amount_paid, ps.signup_price)::numeric AS amount,
+              'group_sessions'::text AS source
             FROM player_signups ps
-            JOIN group_sessions gs ON gs.id = ps.group_session_id
             WHERE ps.has_paid = true
-              AND gs.price IS NOT NULL
+              AND COALESCE(ps.amount_paid, ps.signup_price) IS NOT NULL
               AND COALESCE(ps.updated_at, ps.created_at) >= $1
               AND COALESCE(ps.updated_at, ps.created_at) <= $2
               AND COALESCE(ps.updated_at, ps.created_at) <= $3
@@ -146,11 +173,12 @@ const GROUP_SESSION_WEEK_BREAKDOWN_UNION = `
 
 const GROUP_SESSION_PAST_WEEKS_UNION = `
             UNION ALL
-            SELECT COALESCE(ps.updated_at, ps.created_at) AS paid_at, gs.price::numeric AS amount
+            SELECT
+              COALESCE(ps.updated_at, ps.created_at) AS paid_at,
+              COALESCE(ps.amount_paid, ps.signup_price)::numeric AS amount
             FROM player_signups ps
-            JOIN group_sessions gs ON gs.id = ps.group_session_id
             WHERE ps.has_paid = true
-              AND gs.price IS NOT NULL
+              AND COALESCE(ps.amount_paid, ps.signup_price) IS NOT NULL
               AND COALESCE(ps.updated_at, ps.created_at) >= $1
               AND COALESCE(ps.updated_at, ps.created_at) < $2
 `;

@@ -32,11 +32,21 @@ function normalizeOptionalBirthday(value: unknown): string | null | undefined {
   return raw;
 }
 
+function normalizeOptionalMoney(value: unknown): number | null | undefined {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  return Math.round(parsed * 100) / 100;
+}
+
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const body = await request.json();
     let requestedHasPaid: boolean | null = null;
+    let requestedAmountPaid: number | null | undefined;
 
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -91,6 +101,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       values.push(normalizeOptionalText(body.contact_phone));
     }
 
+    if ('signup_price' in body) {
+      const signupPrice = normalizeOptionalMoney(body.signup_price);
+      if (signupPrice === undefined) {
+        return errorResponse('Signup price must be a valid non-negative number', 400);
+      }
+      fields.push(`signup_price = $${paramIndex++}`);
+      values.push(signupPrice);
+    }
+
+    if ('amount_paid' in body) {
+      requestedAmountPaid = normalizeOptionalMoney(body.amount_paid);
+      if (requestedAmountPaid === undefined) {
+        return errorResponse('Amount paid must be a valid non-negative number', 400);
+      }
+      fields.push(`amount_paid = $${paramIndex++}`);
+      values.push(requestedAmountPaid);
+    }
+
     const optionalTextFields = [
       'foot',
       'team',
@@ -118,9 +146,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return errorResponse('No fields to update', 400);
     }
 
-    if (requestedHasPaid === true) {
+    let existingSignup:
+      | {
+          group_session_id: number;
+          has_paid: boolean;
+          max_players: number;
+          amount_paid: string | number | null;
+        }
+      | null = null;
+
+    if (requestedHasPaid !== null || 'amount_paid' in body) {
       const signupResult = await query(
-        `SELECT ps.group_session_id, ps.has_paid, gs.max_players
+        `SELECT ps.group_session_id, ps.has_paid, ps.amount_paid, gs.max_players
          FROM player_signups ps
          JOIN group_sessions gs ON gs.id = ps.group_session_id
          WHERE ps.id = $1`,
@@ -131,26 +168,49 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         return errorResponse('Player signup not found', 404);
       }
 
-      const signup = signupResult.rows[0] as {
+      existingSignup = signupResult.rows[0] as {
         group_session_id: number;
         has_paid: boolean;
         max_players: number;
+        amount_paid: string | number | null;
       };
+    }
 
-      if (!signup.has_paid) {
-        const capacityResult = await query(
-          `SELECT COUNT(*)::int AS paid_player_count
-           FROM player_signups
-           WHERE group_session_id = $1
-             AND has_paid = true`,
-          [signup.group_session_id]
-        );
+    if (requestedHasPaid === true && existingSignup && !existingSignup.has_paid) {
+      const capacityResult = await query(
+        `SELECT COUNT(*)::int AS paid_player_count
+         FROM player_signups
+         WHERE group_session_id = $1
+           AND has_paid = true`,
+        [existingSignup.group_session_id]
+      );
 
-        const paidPlayerCount = Number(capacityResult.rows[0]?.paid_player_count || 0);
-        if (paidPlayerCount >= Number(signup.max_players)) {
-          return errorResponse('This group session is already full', 400);
-        }
+      const paidPlayerCount = Number(capacityResult.rows[0]?.paid_player_count || 0);
+      if (paidPlayerCount >= Number(existingSignup.max_players)) {
+        return errorResponse('This group session is already full', 400);
       }
+    }
+
+    if (existingSignup) {
+      const effectiveHasPaid = requestedHasPaid ?? existingSignup.has_paid;
+      const effectiveAmountPaid =
+        requestedAmountPaid !== undefined
+          ? requestedAmountPaid
+          : existingSignup.amount_paid == null
+            ? null
+            : Number(existingSignup.amount_paid);
+
+      if (effectiveHasPaid && effectiveAmountPaid == null) {
+        return errorResponse('Amount paid is required when signup is marked paid', 400);
+      }
+      if (!effectiveHasPaid && requestedAmountPaid != null) {
+        return errorResponse('Amount paid can only be set when signup is marked paid', 400);
+      }
+    }
+
+    if (requestedHasPaid === false && !('amount_paid' in body)) {
+      fields.push(`amount_paid = $${paramIndex++}`);
+      values.push(null);
     }
 
     fields.push('updated_at = CURRENT_TIMESTAMP');

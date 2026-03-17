@@ -17,6 +17,8 @@ interface SignupRow {
   foot: string | null;
   team: string | null;
   notes: string | null;
+  signup_price: string | number | null;
+  amount_paid: string | number | null;
   has_paid: boolean;
   stripe_payment_intent_id: string | null;
   stripe_checkout_session_id: string | null;
@@ -52,6 +54,15 @@ function normalizeOptionalBirthday(value: unknown): string | null | undefined {
   if (!raw) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
   return raw;
+}
+
+function normalizeOptionalMoney(value: unknown): number | null | undefined {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  return Math.round(parsed * 100) / 100;
 }
 
 async function getSessionCapacity(groupSessionId: string) {
@@ -107,6 +118,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const lastName = normalizeRequiredText(body.last_name);
     const age = normalizeOptionalAge(body.age);
     const birthday = normalizeOptionalBirthday(body.birthday);
+    const signupPrice = normalizeOptionalMoney(body.signup_price);
+    const amountPaid = normalizeOptionalMoney(body.amount_paid);
     const emergencyContact = normalizeRequiredText(body.emergency_contact);
     const contactEmail = normalizeRequiredText(body.contact_email);
     const contactPhone = normalizeOptionalText(body.contact_phone);
@@ -116,6 +129,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     if (birthday === undefined) {
       return errorResponse('Birthday must be in YYYY-MM-DD format', 400);
+    }
+    if (signupPrice === undefined) {
+      return errorResponse('Signup price must be a valid non-negative number', 400);
+    }
+    if (amountPaid === undefined) {
+      return errorResponse('Amount paid must be a valid non-negative number', 400);
     }
 
     if (!firstName || !lastName || !emergencyContact || !contactEmail) {
@@ -131,6 +150,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const isPaidSignup = body.has_paid === true;
+    if (isPaidSignup && amountPaid == null) {
+      return errorResponse('Amount paid is required when signup is marked paid', 400);
+    }
     if (isPaidSignup && capacity.paidPlayerCount >= capacity.maxPlayers) {
       return errorResponse('This group session is already full', 400);
     }
@@ -148,13 +170,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         foot,
         team,
         notes,
+        signup_price,
+        amount_paid,
         has_paid,
         stripe_payment_intent_id,
         stripe_checkout_session_id,
         stripe_charge_id,
         stripe_receipt_url
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       RETURNING *`,
       [
         id,
@@ -168,6 +192,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         normalizeOptionalText(body.foot),
         normalizeOptionalText(body.team),
         normalizeOptionalText(body.notes),
+        signupPrice,
+        isPaidSignup ? amountPaid : null,
         isPaidSignup,
         normalizeOptionalText(body.stripe_payment_intent_id),
         normalizeOptionalText(body.stripe_checkout_session_id),

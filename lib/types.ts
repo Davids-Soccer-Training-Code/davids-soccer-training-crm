@@ -162,6 +162,7 @@ export interface GroupSession {
   max_players: number;
   player_count?: number;
   prospect_count?: number;
+  total_paid_amount?: number;
   created_at: string;
   updated_at: string;
 }
@@ -179,6 +180,8 @@ export interface PlayerSignup {
   foot: string | null;
   team: string | null;
   notes: string | null;
+  signup_price: number | null;
+  amount_paid: number | null;
   has_paid: boolean;
   stripe_payment_intent_id: string | null;
   stripe_checkout_session_id: string | null;

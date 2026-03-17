@@ -46,6 +46,7 @@ interface GroupSession {
   max_players: number;
   player_count: number;
   prospect_count: number;
+  total_paid_amount: number;
   created_at: string;
   updated_at: string;
 }
@@ -63,6 +64,8 @@ interface PlayerSignup {
   foot: string | null;
   team: string | null;
   notes: string | null;
+  signup_price: number | null;
+  amount_paid: number | null;
   has_paid: boolean;
   stripe_payment_intent_id: string | null;
   stripe_checkout_session_id: string | null;
@@ -95,6 +98,8 @@ interface PlayerFormState {
   foot: string;
   team: string;
   notes: string;
+  signup_price: string;
+  amount_paid: string;
   has_paid: boolean;
   stripe_payment_intent_id: string;
   stripe_checkout_session_id: string;
@@ -140,6 +145,8 @@ const emptyPlayerForm: PlayerFormState = {
   foot: '',
   team: '',
   notes: '',
+  signup_price: '',
+  amount_paid: '',
   has_paid: false,
   stripe_payment_intent_id: '',
   stripe_checkout_session_id: '',
@@ -164,6 +171,18 @@ function formatBirthdayDisplay(value: string | null | undefined): string | null 
   const [year, month, day] = String(value).slice(0, 10).split('-');
   if (!year || !month || !day) return String(value).slice(0, 10);
   return `${month}/${day}/${year}`;
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function getPlayerCollectedAmount(player: PlayerSignup): number | null {
+  if (!player.has_paid) return null;
+  const amount = player.amount_paid ?? player.signup_price;
+  if (amount == null) return null;
+  const parsed = Number(amount);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export default function GroupSessionsPage() {
@@ -493,6 +512,8 @@ export default function GroupSessionsPage() {
       foot: player.foot || '',
       team: player.team || '',
       notes: player.notes || '',
+      signup_price: player.signup_price != null ? String(player.signup_price) : '',
+      amount_paid: player.amount_paid != null ? String(player.amount_paid) : '',
       has_paid: player.has_paid,
       stripe_payment_intent_id: player.stripe_payment_intent_id || '',
       stripe_checkout_session_id: player.stripe_checkout_session_id || '',
@@ -514,6 +535,24 @@ export default function GroupSessionsPage() {
       return;
     }
 
+    const signupPrice =
+      playerForm.signup_price.trim() === '' ? null : Number(playerForm.signup_price.trim());
+    if (signupPrice != null && (!Number.isFinite(signupPrice) || signupPrice < 0)) {
+      setError('Signup price must be a valid non-negative number.');
+      return;
+    }
+
+    const amountPaid =
+      playerForm.amount_paid.trim() === '' ? null : Number(playerForm.amount_paid.trim());
+    if (amountPaid != null && (!Number.isFinite(amountPaid) || amountPaid < 0)) {
+      setError('Amount paid must be a valid non-negative number.');
+      return;
+    }
+    if (playerForm.has_paid && amountPaid == null) {
+      setError('Amount paid is required when the player is marked as paid.');
+      return;
+    }
+
     setSavingPlayer(true);
     setError(null);
 
@@ -529,6 +568,8 @@ export default function GroupSessionsPage() {
         foot: playerForm.foot.trim() || null,
         team: playerForm.team.trim() || null,
         notes: playerForm.notes.trim() || null,
+        signup_price: signupPrice,
+        amount_paid: playerForm.has_paid ? amountPaid : null,
         has_paid: playerForm.has_paid,
         stripe_payment_intent_id: playerForm.stripe_payment_intent_id.trim() || null,
         stripe_checkout_session_id: playerForm.stripe_checkout_session_id.trim() || null,
@@ -597,35 +638,49 @@ export default function GroupSessionsPage() {
     : null;
   const paidPlayers = players.filter((player) => player.has_paid);
   const prospectPlayers = players.filter((player) => !player.has_paid);
+  const sessionCollectedTotal = round2(
+    paidPlayers.reduce((sum, player) => sum + (getPlayerCollectedAmount(player) ?? 0), 0)
+  );
 
   const renderPlayerTable = (rows: PlayerSignup[]) => (
     <TableContainer component={Paper} variant="outlined">
-      <Table size="small">
+      <Table size="small" sx={{ tableLayout: 'fixed' }}>
         <TableHead>
           <TableRow>
-            <TableCell>Player</TableCell>
-            <TableCell>Contact</TableCell>
-            <TableCell>Details</TableCell>
-            <TableCell>Paid</TableCell>
-            <TableCell align="right">Actions</TableCell>
+            <TableCell sx={{ width: '26%' }}>Player</TableCell>
+            <TableCell sx={{ width: '20%' }}>Contact</TableCell>
+            <TableCell sx={{ width: '28%' }}>Details</TableCell>
+            <TableCell sx={{ width: '10%' }}>Spent</TableCell>
+            <TableCell sx={{ width: '8%' }}>Paid</TableCell>
+            <TableCell align="right" sx={{ width: '8%' }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {rows.map((player) => (
+          {rows.map((player) => {
+            const collected = getPlayerCollectedAmount(player);
+            return (
             <TableRow key={player.id} hover>
               <TableCell>
                 <Typography sx={{ fontWeight: 600 }}>
                   {player.first_name} {player.last_name}
                 </Typography>
                 {player.notes && (
-                  <Typography variant="body2" color="text.secondary" noWrap>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                  >
                     {player.notes}
                   </Typography>
                 )}
               </TableCell>
               <TableCell>
                 <Typography>{player.emergency_contact}</Typography>
-                <Typography variant="body2" color="text.secondary" noWrap>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                >
                   {player.contact_email}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -638,10 +693,13 @@ export default function GroupSessionsPage() {
                     `Birthday: ${formatBirthdayDisplay(player.birthday)}`,
                   player.team && `Team: ${player.team}`,
                   player.foot && `Foot: ${player.foot}`,
+                  player.signup_price != null && `Signup: ${money.format(player.signup_price)}`,
+                  player.amount_paid != null && `Paid: ${money.format(player.amount_paid)}`,
                 ]
                   .filter(Boolean)
                   .join(' · ') || '—'}
               </TableCell>
+              <TableCell>{collected != null ? money.format(collected) : '—'}</TableCell>
               <TableCell>
                 <Chip
                   size="small"
@@ -667,7 +725,8 @@ export default function GroupSessionsPage() {
                 </IconButton>
               </TableCell>
             </TableRow>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
     </TableContainer>
@@ -714,6 +773,7 @@ export default function GroupSessionsPage() {
                 <TableCell>Date</TableCell>
                 <TableCell>Location</TableCell>
                 <TableCell>Price</TableCell>
+                <TableCell>Collected</TableCell>
                 <TableCell>Players</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
@@ -753,7 +813,11 @@ export default function GroupSessionsPage() {
                         <Box>
                           <Typography sx={{ fontWeight: 600 }}>{session.title}</Typography>
                           {session.description && (
-                            <Typography variant="body2" color="text.secondary" noWrap>
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+                            >
                               {session.description}
                             </Typography>
                           )}
@@ -772,6 +836,7 @@ export default function GroupSessionsPage() {
                     </TableCell>
                     <TableCell>{session.location || '—'}</TableCell>
                     <TableCell>{session.price != null ? money.format(session.price) : '—'}</TableCell>
+                    <TableCell>{money.format(session.total_paid_amount || 0)}</TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                         <Chip
@@ -1108,6 +1173,12 @@ export default function GroupSessionsPage() {
                   color={paidPlayers.length >= activePlayersDialogSession.max_players ? 'error' : 'primary'}
                   label={`${paidPlayers.length}/${activePlayersDialogSession.max_players} paid`}
                 />
+                <Chip
+                  size="small"
+                  color="success"
+                  variant="outlined"
+                  label={`made ${money.format(sessionCollectedTotal)}`}
+                />
                 <Typography variant="body2" color="text.secondary">
                   {Math.max(activePlayersDialogSession.max_players - paidPlayers.length, 0)} spot
                   {Math.max(activePlayersDialogSession.max_players - paidPlayers.length, 0) === 1
@@ -1248,6 +1319,16 @@ export default function GroupSessionsPage() {
               onChange={(e) => setPlayerForm((prev) => ({ ...prev, team: e.target.value }))}
               fullWidth
             />
+            <TextField
+              label="Signup Price"
+              type="number"
+              value={playerForm.signup_price}
+              onChange={(e) =>
+                setPlayerForm((prev) => ({ ...prev, signup_price: e.target.value }))
+              }
+              fullWidth
+              inputProps={{ min: 0, step: '0.01' }}
+            />
             <FormControlLabel
               control={
                 <Checkbox
@@ -1258,6 +1339,19 @@ export default function GroupSessionsPage() {
                 />
               }
               label="Has Paid"
+            />
+            <TextField
+              label="Amount Paid"
+              type="number"
+              value={playerForm.amount_paid}
+              onChange={(e) =>
+                setPlayerForm((prev) => ({ ...prev, amount_paid: e.target.value }))
+              }
+              fullWidth
+              required={playerForm.has_paid}
+              disabled={!playerForm.has_paid}
+              inputProps={{ min: 0, step: '0.01' }}
+              helperText={playerForm.has_paid ? 'Required when marked paid' : 'Set Has Paid to enter amount'}
             />
             <TextField
               label="Notes"
@@ -1319,7 +1413,8 @@ export default function GroupSessionsPage() {
               !playerForm.first_name.trim() ||
               !playerForm.last_name.trim() ||
               !playerForm.emergency_contact.trim() ||
-              !playerForm.contact_email.trim()
+              !playerForm.contact_email.trim() ||
+              (playerForm.has_paid && !playerForm.amount_paid.trim())
             }
           >
             {savingPlayer ? 'Saving...' : editingPlayer ? 'Save Changes' : 'Add Player'}

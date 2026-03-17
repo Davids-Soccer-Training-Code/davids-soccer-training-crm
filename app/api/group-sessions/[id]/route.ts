@@ -22,6 +22,7 @@ interface GroupSessionRow {
   max_players: number;
   player_count: number;
   prospect_count: number;
+  total_paid_amount: string | number;
   created_at: string;
   updated_at: string;
 }
@@ -42,6 +43,7 @@ function mapGroupSession(row: GroupSessionRow) {
     max_players: asNumber(row.max_players),
     player_count: asNumber(row.player_count),
     prospect_count: asNumber(row.prospect_count),
+    total_paid_amount: round2(asNumber(row.total_paid_amount)),
   };
 }
 
@@ -72,7 +74,8 @@ async function getGroupSession(id: string) {
     `SELECT
       gs.*,
       COUNT(ps.id) FILTER (WHERE ps.has_paid = true)::int AS player_count,
-      COUNT(ps.id) FILTER (WHERE COALESCE(ps.has_paid, false) = false)::int AS prospect_count
+      COUNT(ps.id) FILTER (WHERE COALESCE(ps.has_paid, false) = false)::int AS prospect_count,
+      COALESCE(SUM(COALESCE(ps.amount_paid, ps.signup_price)) FILTER (WHERE ps.has_paid = true), 0)::numeric AS total_paid_amount
     FROM group_sessions gs
     LEFT JOIN player_signups ps ON ps.group_session_id = gs.id
     WHERE gs.id = $1

@@ -49,6 +49,9 @@ const LEGACY_PARENT_SESSION_PLUS_120M_TEMPLATE = [
   "Tests: {{tests_url}}",
 ].join("\n");
 
+const PREVIOUS_PARENT_SESSION_PLUS_120M_TEMPLATE =
+  "Thank you for training with David today, {{parent_name}}. When you're ready, reach out to schedule your next sessions.";
+
 export const SESSION_REMINDER_DEFAULT_TEMPLATES: Record<string, string> = {
   session_48h:
     "48-hour reminder for {{player_name}}: session at {{session_time}}.",
@@ -63,12 +66,15 @@ export const SESSION_REMINDER_DEFAULT_TEMPLATES: Record<string, string> = {
   coach_session_plus_60m:
     "60-minute follow-up: if not already done, get a photo with {{player_name}}. {{review_prompt}}",
   parent_session_plus_120m:
-    "Thank you for training with David today, {{parent_name}}. When you're ready, reach out to schedule your next sessions.",
+    "Thank you for training with David today, {{parent_name}}. Feel free to reach out to schedule again. If you have a minute, please leave a review: https://g.page/r/CbrmGhQt_77aEAI/review",
 };
 
-const LEGACY_DEFAULT_TEMPLATES: Record<string, string> = {
-  session_start: LEGACY_SESSION_START_TEMPLATE,
-  parent_session_plus_120m: LEGACY_PARENT_SESSION_PLUS_120M_TEMPLATE,
+const LEGACY_DEFAULT_TEMPLATES: Record<string, string[]> = {
+  session_start: [LEGACY_SESSION_START_TEMPLATE],
+  parent_session_plus_120m: [
+    LEGACY_PARENT_SESSION_PLUS_120M_TEMPLATE,
+    PREVIOUS_PARENT_SESSION_PLUS_120M_TEMPLATE,
+  ],
 };
 
 function uniqueSorted(values: string[]): string[] {
@@ -171,9 +177,9 @@ export async function ensureAutoRemindersSchema() {
       const defaultTemplate =
         SESSION_REMINDER_DEFAULT_TEMPLATES[reminderType] ??
         `${reminderType} reminder: {{session_time}}`;
-      const legacyTemplate = LEGACY_DEFAULT_TEMPLATES[reminderType];
+      const legacyTemplates = LEGACY_DEFAULT_TEMPLATES[reminderType];
 
-      if (legacyTemplate) {
+      if (legacyTemplates) {
         await query(
           `
             INSERT INTO crm_reminder_defaults (reminder_type, message_template)
@@ -181,9 +187,9 @@ export async function ensureAutoRemindersSchema() {
             ON CONFLICT (reminder_type) DO UPDATE
             SET message_template = EXCLUDED.message_template,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE crm_reminder_defaults.message_template = $3
+            WHERE crm_reminder_defaults.message_template = ANY($3::text[])
           `,
-          [reminderType, defaultTemplate, legacyTemplate]
+          [reminderType, defaultTemplate, legacyTemplates]
         );
         continue;
       }

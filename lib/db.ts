@@ -171,6 +171,7 @@ function getPool() {
       connectionTimeoutMillis: DB_CONNECT_TIMEOUT_MS,
       keepAlive: true,
       allowExitOnIdle: true,
+      options: '-c timezone=UTC',
     });
 
     if (!loggedDbConfig) {

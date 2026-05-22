@@ -174,12 +174,11 @@ export default function CalendarView() {
           first_session: 2,
           call: 3,
           session_reminder: 4,
-          follow_up_reminder: 5,
         };
 
-        const getSortKey = (type: string, reminderType?: string): string => {
+        const getSortKey = (type: string): string => {
           if (type === "reminder") {
-            return (reminderType || "").startsWith("session_") ? "session_reminder" : "follow_up_reminder";
+            return "session_reminder";
           }
           return type;
         };
@@ -279,7 +278,7 @@ export default function CalendarView() {
           const dueDate = toCalendarDate(reminder.due_at);
           calendarEvents.push({
             id: `reminder-${reminder.id}`,
-            title: `💬 Message: ${reminder.parent_name}`,
+            title: `💬 Text: ${reminder.parent_name}`,
             start: dueDate,
             end: dueDate,
             type: "reminder",
@@ -298,8 +297,8 @@ export default function CalendarView() {
           const bStart = (b.resource?.originalStart ?? b.start).getTime();
           if (aStart !== bStart) return aStart - bStart;
 
-          const aSortKey = getSortKey(a.type, a.resource?.reminder_type);
-          const bSortKey = getSortKey(b.type, b.resource?.reminder_type);
+          const aSortKey = getSortKey(a.type);
+          const bSortKey = getSortKey(b.type);
           const aPriority = SORT_PRIORITY[aSortKey] ?? 99;
           const bPriority = SORT_PRIORITY[bSortKey] ?? 99;
           if (aPriority !== bPriority) return aPriority - bPriority;
@@ -335,16 +334,7 @@ export default function CalendarView() {
         backgroundColor = "#f4511e"; // Deep orange
         break;
       case "reminder":
-        // Session reminders (48h, 24h, 6h) = Purple
-        // Follow-up reminders (1d, 3d, 7d, 14d) = Blue
-        const reminderType = event.resource?.reminder_type || "";
-        if (reminderType.startsWith("session_")) {
-          backgroundColor = "#9c27b0"; // Purple for session reminders
-        } else if (reminderType.startsWith("follow_up_")) {
-          backgroundColor = "#2196f3"; // Blue for follow-up reminders
-        } else {
-          backgroundColor = "#9c27b0"; // Default purple
-        }
+        backgroundColor = "#9c27b0";
         break;
     }
 
@@ -375,7 +365,7 @@ export default function CalendarView() {
       case "group_session":
         return "🟧 Group Session";
       case "reminder":
-        return "💬 Reminder";
+        return "💬 Session Text";
       default:
         return type;
     }
@@ -477,24 +467,11 @@ export default function CalendarView() {
                   width: 14,
                   height: 14,
                   borderRadius: "4px",
-                  bgcolor: "#2196f3",
-                }}
-              />
-              <Typography variant="body2" color="text.secondary">
-                Reminder follow-up
-              </Typography>
-            </Box>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-              <Box
-                sx={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: "4px",
                   bgcolor: "#9c27b0",
                 }}
               />
               <Typography variant="body2" color="text.secondary">
-                Reminder session
+                Session text
               </Typography>
             </Box>
           </Box>

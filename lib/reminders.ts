@@ -1,6 +1,4 @@
 import { query } from "@/lib/db";
-import { ARIZONA_TIMEZONE } from "@/lib/timezone";
-import { fromZonedTime, toZonedTime } from "date-fns-tz";
 
 function normalizeToUtcDate(dateValue: string | Date): Date {
   if (dateValue instanceof Date) {
@@ -27,20 +25,6 @@ function normalizeToUtcDate(dateValue: string | Date): Date {
     : `${dateValue.replace(" ", "T")}Z`;
 
   return new Date(normalized);
-}
-
-function normalizeToArizonaLocalUtcDate(dateValue: string | Date): Date {
-  if (dateValue instanceof Date) {
-    return fromZonedTime(dateValue, ARIZONA_TIMEZONE);
-  }
-
-  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/.test(dateValue);
-  if (hasTimezone) {
-    return new Date(dateValue);
-  }
-
-  const arizonaLocal = dateValue.replace(" ", "T");
-  return fromZonedTime(arizonaLocal, ARIZONA_TIMEZONE);
 }
 
 export const SESSION_REMINDER_INTERVALS = [
@@ -114,61 +98,17 @@ export async function createSessionReminders(
 }
 
 export async function createFollowUpReminders(
-  parentId: number,
-  category: string,
-  opts?: {
+  _parentId: number,
+  _category: string,
+  _opts?: {
     anchorDate?: string | Date;
     skipPastIntervals?: boolean;
     anchorTimezone?: "utc" | "arizona_local";
   }
 ) {
-  // Follow-ups are always due at 12:00 PM Arizona and can be anchored to a source date
-  // (for example, first session date or last completed session date).
-  const nowArizona = toZonedTime(new Date(), ARIZONA_TIMEZONE);
-  const todayArizona = new Date(nowArizona);
-  todayArizona.setHours(0, 0, 0, 0);
-  const anchorSource = opts?.anchorDate ?? new Date();
-  const anchorUtc =
-    opts?.anchorTimezone === "arizona_local"
-      ? normalizeToArizonaLocalUtcDate(anchorSource)
-      : normalizeToUtcDate(anchorSource);
-  const anchorArizona = toZonedTime(anchorUtc, ARIZONA_TIMEZONE);
-  const allIntervals = [
-    { type: "follow_up_1d", days: 1 },
-    { type: "follow_up_3d", days: 3 },
-    { type: "follow_up_7d", days: 7 },
-    { type: "follow_up_14d", days: 14 },
-  ];
-  const intervals = allIntervals;
-  let createdCount = 0;
+  void _parentId;
+  void _category;
+  void _opts;
 
-  for (const interval of intervals) {
-    const dueAtArizona = new Date(anchorArizona);
-    dueAtArizona.setDate(anchorArizona.getDate() + interval.days);
-    dueAtArizona.setHours(12, 0, 0, 0);
-    const dueAtUtc = fromZonedTime(dueAtArizona, ARIZONA_TIMEZONE);
-
-    const shouldSkipPast = opts?.skipPastIntervals !== false;
-    if (shouldSkipPast && dueAtArizona < todayArizona) {
-      continue;
-    }
-
-    // Avoid duplicate unsent reminders for the same parent/category/type/date.
-    const insertResult = await query(
-      `INSERT INTO crm_reminders (parent_id, reminder_type, reminder_category, due_at)
-       SELECT $1::int, $2::text, $3::text, ($4::timestamptz AT TIME ZONE 'UTC')
-       WHERE NOT EXISTS (
-         SELECT 1 FROM crm_reminders
-         WHERE parent_id = $1::int
-           AND reminder_type = $2::text
-           AND reminder_category = $3::text
-           AND due_at = ($4::timestamptz AT TIME ZONE 'UTC')
-           AND sent = false
-       )`,
-      [parentId, interval.type, category, dueAtUtc.toISOString()]
-    );
-    createdCount += insertResult.rowCount || 0;
-  }
-
-  return createdCount;
+  return 0;
 }

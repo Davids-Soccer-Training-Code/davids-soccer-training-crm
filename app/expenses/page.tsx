@@ -33,6 +33,7 @@ import MenuItem from '@mui/material/MenuItem';
 export const dynamic = 'force-dynamic';
 
 const STARTING_EXPENSE_YEAR = 2026;
+const EXPENSE_PAGE_SIZE = 25;
 const DEFAULT_BUSINESS_PERCENTAGE = 100;
 const ARIZONA_STATE_INCOME_TAX_RATE = 0.025;
 const SELF_EMPLOYMENT_TAX_RATE = 0.153;
@@ -58,6 +59,9 @@ interface Expense {
 interface ExpensesApiResponse {
   year: number;
   expenses: Expense[];
+  total_count: number;
+  limit: number;
+  offset: number;
   totals: {
     gross_spent: number;
     business_spent: number;
@@ -191,6 +195,7 @@ export default function ExpensesPage() {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(Math.max(STARTING_EXPENSE_YEAR, currentYear));
   const [data, setData] = useState<ExpensesApiResponse | null>(null);
+  const [expensePage, setExpensePage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -228,7 +233,7 @@ export default function ExpensesPage() {
     setError(null);
     try {
       const [expenseRes, financeRes] = await Promise.all([
-        fetch(`/api/expenses?year=${selectedYear}`, { cache: 'no-store' }),
+        fetch(`/api/expenses?year=${selectedYear}&limit=${EXPENSE_PAGE_SIZE}&offset=${expensePage * EXPENSE_PAGE_SIZE}`, { cache: 'no-store' }),
         fetch('/api/finance-goals', { cache: 'no-store' }),
       ]);
 
@@ -259,7 +264,7 @@ export default function ExpensesPage() {
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedYear]);
+  }, [selectedYear, expensePage]);
 
   const totalRevenue = round2(revenueByYear[selectedYear] ?? 0);
   const grossSpent = round2(data?.totals.gross_spent ?? 0);
@@ -268,6 +273,11 @@ export default function ExpensesPage() {
   const taxEstimate = useMemo(() => {
     return calculateTaxEstimate(totalRevenue, businessSpent, taxRates.federal, taxRates.arizona);
   }, [businessSpent, taxRates.arizona, taxRates.federal, totalRevenue]);
+  const totalExpenseCount = data?.total_count ?? 0;
+  const visibleExpenseStart = totalExpenseCount === 0 ? 0 : expensePage * EXPENSE_PAGE_SIZE + 1;
+  const visibleExpenseEnd = Math.min((expensePage + 1) * EXPENSE_PAGE_SIZE, totalExpenseCount);
+  const hasNewerExpenses = expensePage > 0;
+  const hasOlderExpenses = visibleExpenseEnd < totalExpenseCount;
 
   const resetForm = () => {
     setForm({
@@ -378,7 +388,11 @@ export default function ExpensesPage() {
       }
 
       closeExpenseDialog();
-      await fetchData();
+      if (editingExpense || expensePage === 0) {
+        await fetchData();
+      } else {
+        setExpensePage(0);
+      }
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'Failed to save expense');
@@ -420,7 +434,10 @@ export default function ExpensesPage() {
             size="small"
             label="Year"
             value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            onChange={(e) => {
+              setSelectedYear(Number(e.target.value));
+              setExpensePage(0);
+            }}
             sx={{ minWidth: 120 }}
           >
             {yearOptions.map((year) => (
@@ -442,6 +459,36 @@ export default function ExpensesPage() {
       )}
 
       <Card sx={{ mb: 3 }}>
+        <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap', pb: 1 }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Recent Expenses
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {totalExpenseCount === 0
+                ? `No expenses for ${selectedYear}`
+                : `Showing ${visibleExpenseStart}-${visibleExpenseEnd} of ${totalExpenseCount}`}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={!hasNewerExpenses}
+              onClick={() => setExpensePage((prev) => Math.max(0, prev - 1))}
+            >
+              Newer 25
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={!hasOlderExpenses}
+              onClick={() => setExpensePage((prev) => prev + 1)}
+            >
+              Older 25
+            </Button>
+          </Box>
+        </CardContent>
         <CardContent sx={{ p: 0 }}>
           <TableContainer component={Paper} elevation={0}>
             <Table size="small">
@@ -525,6 +572,26 @@ export default function ExpensesPage() {
             </Table>
           </TableContainer>
         </CardContent>
+        {totalExpenseCount > EXPENSE_PAGE_SIZE && (
+          <CardContent sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, pt: 1 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={!hasNewerExpenses}
+              onClick={() => setExpensePage((prev) => Math.max(0, prev - 1))}
+            >
+              Newer 25
+            </Button>
+            <Button
+              size="small"
+              variant="contained"
+              disabled={!hasOlderExpenses}
+              onClick={() => setExpensePage((prev) => prev + 1)}
+            >
+              Older 25
+            </Button>
+          </CardContent>
+        )}
       </Card>
 
       <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>

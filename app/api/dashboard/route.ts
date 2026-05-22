@@ -1,5 +1,16 @@
 import { query } from "@/lib/db";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers";
+
+function normalizeToUtcIso(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString();
+  const s = String(value).trim();
+  if (!s) return null;
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/.test(s);
+  const asUtc = hasTimezone ? s : `${s.replace(' ', 'T')}Z`;
+  const d = new Date(asUtc);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
 import {
   getTodayBoundsArizona,
   getDateBoundsArizona,
@@ -18,13 +29,13 @@ export async function GET(request: NextRequest) {
     const { start: todayStart, end: todayEnd } = getTodayBoundsArizona();
     const dayOffsetRaw = Number(request.nextUrl.searchParams.get("dayOffset") ?? "0");
     const dayOffset = Number.isFinite(dayOffsetRaw)
-      ? Math.max(0, Math.min(3, Math.trunc(dayOffsetRaw)))
+      ? Math.max(-30, Math.min(30, Math.trunc(dayOffsetRaw)))
       : 0;
 
     let selectedStart = todayStart;
     let selectedEnd = todayEnd;
 
-    if (dayOffset > 0) {
+    if (dayOffset !== 0) {
       const targetArizonaDate = nowInArizona();
       targetArizonaDate.setDate(targetArizonaDate.getDate() + dayOffset);
       const selectedBounds = getDateBoundsArizona(targetArizonaDate);
@@ -134,6 +145,7 @@ export async function GET(request: NextRequest) {
       FROM crm_reminders r
       JOIN crm_parents p ON p.id = r.parent_id
       WHERE r.sent = false
+        AND r.reminder_category = 'session_reminder'
         AND COALESCE(p.is_dead, false) = false
         AND r.due_at <= $2
       ORDER BY due_days_ago DESC, r.due_at ASC
@@ -274,6 +286,7 @@ export async function GET(request: NextRequest) {
       FROM crm_reminders r
       JOIN crm_parents p ON p.id = r.parent_id
       WHERE r.sent = false
+        AND r.reminder_category = 'session_reminder'
         AND COALESCE(p.is_dead, false) = false
         AND r.due_at >= $1
         AND r.due_at <= $2
@@ -293,7 +306,11 @@ export async function GET(request: NextRequest) {
       upcomingCalls: upcomingCallsResult.rows,
       upcomingFirstSessions: upcomingFirstSessionsResult.rows,
       upcomingSessions: upcomingSessionsResult.rows,
-      upcomingGroupSessions: upcomingGroupSessionsResult.rows,
+      upcomingGroupSessions: upcomingGroupSessionsResult.rows.map((row: Record<string, unknown>) => ({
+        ...row,
+        session_date: normalizeToUtcIso(row.session_date) ?? row.session_date,
+        session_date_end: normalizeToUtcIso(row.session_date_end),
+      })),
       upcomingReminders: allRemindersResult.rows,
     });
   } catch (error) {

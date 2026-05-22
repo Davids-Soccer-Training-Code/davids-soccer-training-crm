@@ -39,12 +39,25 @@ function round2(value: number): number {
 function mapGroupSession(row: GroupSessionRow) {
   return {
     ...row,
+    session_date: normalizeToUtcIso(row.session_date) ?? row.session_date,
+    session_date_end: normalizeToUtcIso(row.session_date_end),
     price: row.price == null ? null : round2(asNumber(row.price)),
     max_players: asNumber(row.max_players),
     player_count: asNumber(row.player_count),
     prospect_count: asNumber(row.prospect_count),
     total_paid_amount: round2(asNumber(row.total_paid_amount)),
   };
+}
+
+function normalizeToUtcIso(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString();
+  const s = String(value).trim();
+  if (!s) return null;
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/.test(s);
+  const asUtc = hasTimezone ? s : `${s.replace(' ', 'T')}Z`;
+  const d = new Date(asUtc);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 function normalizeOptionalText(value: unknown): string | null {

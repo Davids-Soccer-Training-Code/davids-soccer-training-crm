@@ -6,6 +6,9 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import CardActionArea from '@mui/material/CardActionArea';
+import Accordion from '@mui/material/Accordion';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import AccordionDetails from '@mui/material/AccordionDetails';
 import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
@@ -19,6 +22,7 @@ import LinearProgress from '@mui/material/LinearProgress';
 import IconButton from '@mui/material/IconButton';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { Parent } from '@/lib/types';
 
 const packageTypeLabels: Record<string, string> = {
@@ -121,6 +125,95 @@ export default function PackagesPage() {
 
   if (loading) return <Typography>Loading...</Typography>;
 
+  const activePackages = packages.filter((pkg) => pkg.is_active);
+  const completedPackages = packages.filter((pkg) => !pkg.is_active);
+
+  const renderPackageCard = (pkg: PackageRow) => {
+    const progress = pkg.total_sessions > 0 ? Math.min((pkg.sessions_completed / pkg.total_sessions) * 100, 100) : 0;
+    const packagePrice = Number(pkg.price ?? 0);
+    const amountReceived = Number(pkg.amount_received ?? 0);
+    const hasPrice = packagePrice > 0;
+    const safeAmountReceived = hasPrice ? Math.min(amountReceived, packagePrice) : amountReceived;
+    const paymentProgress = hasPrice ? Math.min((safeAmountReceived / packagePrice) * 100, 100) : 0;
+
+    return (
+      <Card
+        key={pkg.id}
+        variant="outlined"
+        sx={{
+          borderLeft: 4,
+          borderColor: pkg.is_active ? 'success.main' : 'divider',
+        }}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 1, pt: 1 }}>
+          <IconButton
+            size="small"
+            color="error"
+            aria-label="Delete package"
+            onClick={(event) => {
+              event.stopPropagation();
+              setDeleteTarget(pkg);
+            }}
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </Box>
+        <CardActionArea onClick={() => router.push(`/packages/${pkg.id}`)}>
+          <CardContent sx={{ pt: 0.5, pb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, mb: 1 }}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 700 }}>
+                  {pkg.parent_name}
+                  {pkg.player_names && pkg.player_names.length > 0 && (
+                    <Typography component="span" sx={{ fontWeight: 400, color: 'text.secondary', ml: 1 }}>
+                      ({pkg.player_names.join(', ')})
+                    </Typography>
+                  )}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {packageTypeLabels[pkg.package_type] || pkg.package_type}
+                </Typography>
+              </Box>
+              <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+                <Chip label={pkg.is_active ? 'Still Doing' : 'Completed'} color={pkg.is_active ? 'success' : 'default'} size="small" />
+                {pkg.price != null && <Typography variant="body2" sx={{ mt: 0.5 }}>{currency.format(packagePrice)}</Typography>}
+              </Box>
+            </Box>
+
+            <Box sx={{ mt: 1, display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="body2" color="text.secondary">Sessions</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {pkg.sessions_completed}/{pkg.total_sessions}
+                  </Typography>
+                </Box>
+                <LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4 }} />
+              </Box>
+
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="body2" color="text.secondary">Payment</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {hasPrice
+                      ? `${currency.format(safeAmountReceived)} / ${currency.format(packagePrice)}`
+                      : `${currency.format(amountReceived)} received`}
+                  </Typography>
+                </Box>
+                <LinearProgress
+                  variant="determinate"
+                  value={paymentProgress}
+                  color="success"
+                  sx={{ height: 8, borderRadius: 4 }}
+                />
+              </Box>
+            </Box>
+          </CardContent>
+        </CardActionArea>
+      </Card>
+    );
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -131,97 +224,46 @@ export default function PackagesPage() {
       </Box>
 
       {packages.length === 0 ? (
-        <Card>
+        <Card variant="outlined">
           <CardContent sx={{ textAlign: 'center', py: 6 }}>
             <Typography color="text.secondary">No packages yet. Create one for a client!</Typography>
           </CardContent>
         </Card>
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {packages.map((pkg) => {
-            const progress = pkg.total_sessions > 0 ? (pkg.sessions_completed / pkg.total_sessions) * 100 : 0;
-            const packagePrice = Number(pkg.price ?? 0);
-            const amountReceived = Number(pkg.amount_received ?? 0);
-            const hasPrice = packagePrice > 0;
-            const safeAmountReceived = hasPrice ? Math.min(amountReceived, packagePrice) : amountReceived;
-            const paymentProgress = hasPrice ? Math.min((safeAmountReceived / packagePrice) * 100, 100) : 0;
-
-            return (
-              <Card
-                key={pkg.id}
-                sx={{
-                  borderLeft: 4,
-                  borderColor: pkg.is_active ? 'success.main' : 'divider',
-                }}
-              >
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 1, pt: 1 }}>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    aria-label="Delete package"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setDeleteTarget(pkg);
-                    }}
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Box>
-                <CardActionArea onClick={() => router.push(`/packages/${pkg.id}`)}>
-                  <CardContent sx={{ py: 2 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                      <Box>
-                        <Typography sx={{ fontWeight: 600 }}>
-                          {pkg.parent_name}
-                          {pkg.player_names && pkg.player_names.length > 0 && (
-                            <Typography component="span" sx={{ fontWeight: 400, color: 'text.secondary', ml: 1 }}>
-                              ({pkg.player_names.join(', ')})
-                            </Typography>
-                          )}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {packageTypeLabels[pkg.package_type] || pkg.package_type}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Chip label={pkg.is_active ? 'Active' : 'Completed'} color={pkg.is_active ? 'success' : 'default'} size="small" />
-                        {pkg.price != null && <Typography variant="body2" sx={{ mt: 0.5 }}>{currency.format(packagePrice)}</Typography>}
-                      </Box>
-                    </Box>
-
-                    <Box sx={{ mt: 1, display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
-                      <Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                          <Typography variant="body2" color="text.secondary">Progress</Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {pkg.sessions_completed}/{pkg.total_sessions} sessions
-                          </Typography>
-                        </Box>
-                        <LinearProgress variant="determinate" value={progress} sx={{ height: 8, borderRadius: 4 }} />
-                      </Box>
-
-                      <Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                          <Typography variant="body2" color="text.secondary">Payment</Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {hasPrice
-                              ? `${currency.format(safeAmountReceived)} / ${currency.format(packagePrice)} (${paymentProgress.toFixed(0)}%)`
-                              : `${currency.format(amountReceived)} received`}
-                          </Typography>
-                        </Box>
-                        <LinearProgress
-                          variant="determinate"
-                          value={paymentProgress}
-                          color="success"
-                          sx={{ height: 8, borderRadius: 4 }}
-                        />
-                      </Box>
-                    </Box>
-                  </CardContent>
-                </CardActionArea>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+              Still Doing ({activePackages.length})
+            </Typography>
+            {activePackages.length === 0 ? (
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography color="text.secondary" variant="body2">No active packages right now.</Typography>
+                </CardContent>
               </Card>
-            );
-          })}
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {activePackages.map(renderPackageCard)}
+              </Box>
+            )}
+          </Box>
+
+          <Accordion disableGutters>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography sx={{ fontWeight: 700 }}>
+                Completed Packages ({completedPackages.length})
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ pt: 0 }}>
+              {completedPackages.length === 0 ? (
+                <Typography color="text.secondary" variant="body2">No completed packages yet.</Typography>
+              ) : (
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  {completedPackages.map(renderPackageCard)}
+                </Box>
+              )}
+            </AccordionDetails>
+          </Accordion>
         </Box>
       )}
 

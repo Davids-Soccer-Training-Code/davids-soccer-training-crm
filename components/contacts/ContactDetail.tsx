@@ -38,20 +38,16 @@ const dmSteps = [
 
 const reminderCategoryLabels: Record<string, string> = {
   session_reminder: 'Session Reminder',
-  dm_follow_up: 'DM Follow-up',
-  post_call_follow_up: 'Post-Call Follow-up',
-  post_first_session_follow_up: 'Post-First-Session Follow-up',
-  post_session_follow_up: 'Client Drop-off Follow-up',
 };
 
 const reminderTypeLabels: Record<string, string> = {
   session_48h: '48h before',
   session_24h: '24h before',
   session_6h: '6h before',
-  follow_up_1d: 'Day 1',
-  follow_up_3d: 'Day 3',
-  follow_up_7d: 'Day 7',
-  follow_up_14d: 'Day 14',
+  session_start: 'At session time',
+  coach_session_start: 'Coach at start',
+  coach_session_plus_60m: 'Coach +60m',
+  parent_session_plus_120m: 'Parent +3h after end',
 };
 
 type EditableParentField = 'name' | 'secondary_parent_name' | 'phone' | 'email' | 'instagram_link' | 'notes';
@@ -694,18 +690,18 @@ export default function ContactDetail({ id }: { id: string }) {
               <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                 <Typography sx={{ fontWeight: 600 }}>First Session</Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                  {(parent.first_session as any).status && (
+                  {parent.first_session.status && (
                     <Chip
-                      label={(parent.first_session as any).status.replace('_', ' ')}
+                      label={parent.first_session.status.replace('_', ' ')}
                       color={
-                        (parent.first_session as any).status === 'accepted' ? 'success' :
-                        (parent.first_session as any).status === 'completed' ? 'success' :
-                        (parent.first_session as any).status === 'cancelled' ? 'error' : 'warning'
+                        parent.first_session.status === 'accepted' ? 'success' :
+                        parent.first_session.status === 'completed' ? 'success' :
+                        parent.first_session.status === 'cancelled' ? 'error' : 'warning'
                       }
                       size="small"
                     />
                   )}
-                  {!((parent.first_session as any).status) && (
+                  {!parent.first_session.status && (
                     <Chip
                       label={parent.first_session.showed_up === true ? 'Showed Up' : parent.first_session.cancelled ? 'Cancelled' : 'Upcoming'}
                       color={parent.first_session.showed_up ? 'success' : parent.first_session.cancelled ? 'error' : 'info'}
@@ -728,18 +724,18 @@ export default function ContactDetail({ id }: { id: string }) {
                     {formatArizonaDateTime(session.session_date)}
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1 }}>
-                    {(session as any).status && (
+                    {session.status && (
                       <Chip
-                        label={(session as any).status.replace('_', ' ')}
+                        label={session.status.replace('_', ' ')}
                         color={
-                          (session as any).status === 'accepted' ? 'success' :
-                          (session as any).status === 'completed' ? 'success' :
-                          (session as any).status === 'cancelled' ? 'error' : 'warning'
+                          session.status === 'accepted' ? 'success' :
+                          session.status === 'completed' ? 'success' :
+                          session.status === 'cancelled' ? 'error' : 'warning'
                         }
                         size="small"
                       />
                     )}
-                    {!((session as any).status) && (
+                    {!session.status && (
                       <Chip
                         label={session.showed_up === true ? 'Showed Up' : session.cancelled ? 'Cancelled' : 'Upcoming'}
                         color={session.showed_up ? 'success' : session.cancelled ? 'error' : 'info'}
@@ -760,21 +756,20 @@ export default function ContactDetail({ id }: { id: string }) {
         </CardContent>
       </Card>
 
-      {/* Pending Reminders */}
+      {/* Pending Session Texts */}
       {parent.pending_reminders && parent.pending_reminders.length > 0 && (() => {
         const sessionReminders = parent.pending_reminders.filter(
-          (r) => r.reminder_type.startsWith('session_')
+          (r) => r.reminder_category === 'session_reminder'
         );
-        const followUpReminders = parent.pending_reminders.filter(
-          (r) => r.reminder_type.startsWith('follow_up_')
-        );
+        if (sessionReminders.length === 0) return null;
+
         return (
           <Card sx={{ mb: 3 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                 <NotificationsIcon color="warning" />
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  Pending Reminders ({parent.pending_reminders.length})
+                  Pending Session Texts ({sessionReminders.length})
                 </Typography>
               </Box>
 
@@ -795,43 +790,6 @@ export default function ContactDetail({ id }: { id: string }) {
                         borderRadius: 2,
                         mb: 1,
                         borderLeft: '4px solid #9c27b0',
-                      }}
-                    >
-                      <Box>
-                        <Typography sx={{ fontWeight: 600 }}>
-                          {reminderCategoryLabels[reminder.reminder_category] || reminder.reminder_category}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {reminderTypeLabels[reminder.reminder_type] || reminder.reminder_type}
-                          {' — Due: '}
-                          {formatArizonaDateTime(reminder.due_at)}
-                        </Typography>
-                      </Box>
-                      <IconButton color="success" onClick={() => markReminderSent(reminder.id)} title="Mark as sent">
-                        <CheckIcon />
-                      </IconButton>
-                    </Box>
-                  ))}
-                </>
-              )}
-
-              {followUpReminders.length > 0 && (
-                <>
-                  <Typography variant="subtitle2" sx={{ mb: 1, mt: sessionReminders.length > 0 ? 2 : 0, color: '#2196f3', fontWeight: 600 }}>
-                    Follow-up Reminders
-                  </Typography>
-                  {followUpReminders.map((reminder) => (
-                    <Box
-                      key={reminder.id}
-                      sx={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        p: 1.5,
-                        bgcolor: 'grey.50',
-                        borderRadius: 2,
-                        mb: 1,
-                        borderLeft: '4px solid #2196f3',
                       }}
                     >
                       <Box>

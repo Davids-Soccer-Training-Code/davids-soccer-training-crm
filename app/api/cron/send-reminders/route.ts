@@ -20,6 +20,7 @@ export const preferredRegion = "iad1";
 const MESSAGE_PREFIX = "Davids Soccer Training. DO NOT REPLY";
 const MESSAGE_SUFFIX =
   "For any questions, reach out to Coach David at 720 612 2979.";
+const GOOGLE_REVIEW_URL = "https://g.page/r/CbrmGhQt_77aEAI/review";
 
 interface DueReminderRow {
   id: number;
@@ -183,6 +184,7 @@ function wrapCoachMessage(coreMessage: string): string {
 function stripSmsLinks(body: string): string {
   const urlPattern =
     /(?:https?:\/\/|www\.)\S+|\b[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:\/\S*)?/gi;
+  const allowedUrls = new Set([GOOGLE_REVIEW_URL]);
 
   return body
     .split("\n")
@@ -198,7 +200,10 @@ function stripSmsLinks(body: string): string {
       }
 
       return line
-        .replace(urlPattern, "")
+        .replace(urlPattern, (match) => {
+          const strippedTrailingPunctuation = match.replace(/[.,!?]+$/, "");
+          return allowedUrls.has(strippedTrailingPunctuation) ? match : "";
+        })
         .replace(/\s+([.,!?])/g, "$1")
         .replace(/\s{2,}/g, " ")
         .trim();
@@ -664,7 +669,7 @@ async function buildMessage(
       return {
         to: parentPhone,
         body: wrapMessage(
-          `Thank you for training with David today, ${parentDisplay}. When you're ready, reach out to schedule your next sessions.`
+          `Thank you for training with David today, ${parentDisplay}. Feel free to reach out to schedule again. If you have a minute, please leave a review: ${GOOGLE_REVIEW_URL}`
         ),
       };
     }

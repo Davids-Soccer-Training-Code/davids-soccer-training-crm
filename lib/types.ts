@@ -78,6 +78,7 @@ export interface FirstSession {
   send_email_updates: boolean;
   showed_up: boolean | null;
   cancelled: boolean;
+  status?: string | null;
   was_paid: boolean;
   payment_method: PaymentMethod | null;
   notes: string | null;
@@ -96,6 +97,7 @@ export interface Session {
   price: number | null;
   showed_up: boolean | null;
   cancelled: boolean;
+  status?: string | null;
   was_paid: boolean;
   payment_method: PaymentMethod | null;
   package_id: number | null;

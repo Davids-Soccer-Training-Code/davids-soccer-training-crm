@@ -41,11 +41,10 @@ const reminderTypeLabels: Record<string, string> = {
   coach_session_start: 'Coach at start',
   coach_session_plus_60m: 'Coach +60m',
   parent_session_plus_120m: 'Parent +3h after end',
-  follow_up_1d: 'Day 1',
-  follow_up_3d: 'Day 3',
-  follow_up_7d: 'Day 7',
-  follow_up_14d: 'Day 14',
 };
+
+const DAY_OFFSET_MIN = -30;
+const DAY_OFFSET_MAX = 30;
 
 interface DashboardData {
   todays_calls: Array<{ id: number; name: string; call_date_time: string | null; phone: string }>;
@@ -60,6 +59,10 @@ interface Player {
   id: number;
   name: string;
 }
+
+type DashboardSession =
+  | DashboardData['todays_first_sessions'][number]
+  | DashboardData['todays_sessions'][number];
 
 export const dynamic = 'force-dynamic';
 
@@ -85,7 +88,13 @@ export default function DashboardPage() {
     setLoading(false);
   }, [dayOffset]);
 
-  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      fetchDashboard();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchDashboard]);
 
   const markReminderSent = async (id: number) => {
     await fetch(`/api/reminders/${id}/mark-sent`, { method: 'POST' });
@@ -130,7 +139,7 @@ export default function DashboardPage() {
     } : null);
   };
 
-  const openEditDialog = async (session: any, type: 'first' | 'regular') => {
+  const openEditDialog = async (session: DashboardSession, type: 'first' | 'regular') => {
     // Fetch parent's players
     const res = await fetch(`/api/parents/${session.parent_id}/players`);
     if (res.ok) {
@@ -185,53 +194,27 @@ export default function DashboardPage() {
   if (loading) return <Typography>Loading dashboard...</Typography>;
   if (!data) return <Typography color="error">Failed to load dashboard.</Typography>;
 
-  const reminderGroupLabels: Record<string, string> = {
-    session_reminder: 'Session Reminders',
-    session_follow_up: 'Session Follow-up',
-    first_session_follow_up: 'First Session Follow-up',
-    call_follow_up: 'Call Follow-up',
-    talking_follow_up: 'Talking Follow-up',
-    first_message_follow_up: 'First Message Follow-up',
-  };
-
-  const getReminderGroup = (reminder: DashboardData['pending_reminders'][number]) => {
-    if (reminder.reminder_category === 'session_reminder') return 'session_reminder';
-    if (reminder.reminder_category === 'post_session_follow_up') return 'session_follow_up';
-    if (reminder.reminder_category === 'post_first_session_follow_up') return 'first_session_follow_up';
-    if (reminder.reminder_category === 'post_call_follow_up') return 'call_follow_up';
-    if (reminder.reminder_category === 'dm_follow_up') {
-      return reminder.parent_dm_status === 'first_message' ? 'first_message_follow_up' : 'talking_follow_up';
-    }
-    return 'talking_follow_up';
-  };
-
-  const reminderGroups = [
-    'session_reminder',
-    'session_follow_up',
-    'first_session_follow_up',
-    'call_follow_up',
-    'talking_follow_up',
-    'first_message_follow_up',
-  ].map((groupKey) => ({
-    key: groupKey,
-    label: reminderGroupLabels[groupKey],
-    items: data.pending_reminders.filter((r) => getReminderGroup(r) === groupKey),
-  })).filter((g) => g.items.length > 0);
-
   const selectedDayDate = nowInArizona();
   selectedDayDate.setDate(selectedDayDate.getDate() + dayOffset);
   const selectedDayLabel = dayOffset === 0
     ? 'Today'
+    : dayOffset === -1
+      ? 'Yesterday'
     : dayOffset === 1
       ? 'Tomorrow'
       : formatArizonaDate(selectedDayDate);
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 700 }}>
-          Dashboard
-        </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', sm: 'center' }, gap: 2, mb: 3, flexDirection: { xs: 'column', sm: 'row' } }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+            Dashboard
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {selectedDayLabel} schedule, sessions, and session texts.
+          </Typography>
+        </Box>
         <ToggleButtonGroup
           value={viewMode}
           exclusive
@@ -254,8 +237,8 @@ export default function DashboardPage() {
       ) : (
         <>
           {/* Stats Row */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2, mb: 3 }}>
-        <Card>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2, mb: 2 }}>
+        <Card variant="outlined">
           <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <PeopleIcon sx={{ color: 'primary.main', fontSize: 32 }} />
             <Box>
@@ -264,7 +247,7 @@ export default function DashboardPage() {
             </Box>
           </CardContent>
         </Card>
-        <Card>
+        <Card variant="outlined">
           <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <EventIcon sx={{ color: 'primary.main', fontSize: 32 }} />
             <Box>
@@ -273,7 +256,7 @@ export default function DashboardPage() {
             </Box>
           </CardContent>
         </Card>
-        <Card>
+        <Card variant="outlined">
           <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <AttachMoneyIcon sx={{ color: 'primary.main', fontSize: 32 }} />
             <Box>
@@ -284,25 +267,37 @@ export default function DashboardPage() {
         </Card>
       </Box>
 
-      <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-          <Typography sx={{ fontWeight: 700 }}>
-            List View Day: {selectedDayLabel}
-          </Typography>
+      <Card variant="outlined" sx={{ mb: 2 }}>
+        <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap', py: 1.5, '&:last-child': { pb: 1.5 } }}>
+          <Box>
+            <Typography sx={{ fontWeight: 700 }}>
+              {selectedDayLabel}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {formatArizonaDate(selectedDayDate)}
+            </Typography>
+          </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button
               size="small"
               variant="outlined"
-              disabled={dayOffset === 0}
-              onClick={() => setDayOffset((prev) => Math.max(0, prev - 1))}
+              disabled={dayOffset <= DAY_OFFSET_MIN}
+              onClick={() => setDayOffset((prev) => Math.max(DAY_OFFSET_MIN, prev - 1))}
             >
               Previous
             </Button>
             <Button
               size="small"
-              variant="contained"
-              disabled={dayOffset >= 3}
-              onClick={() => setDayOffset((prev) => Math.min(3, prev + 1))}
+              variant={dayOffset === 0 ? 'contained' : 'outlined'}
+              onClick={() => setDayOffset(0)}
+            >
+              Today
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={dayOffset >= DAY_OFFSET_MAX}
+              onClick={() => setDayOffset((prev) => Math.min(DAY_OFFSET_MAX, prev + 1))}
             >
               Next
             </Button>
@@ -311,7 +306,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Selected Day Calls */}
-      <Card sx={{ mb: 3 }}>
+      <Card variant="outlined" sx={{ mb: 2 }}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <PhoneIcon sx={{ color: 'primary.main' }} />
@@ -323,7 +318,7 @@ export default function DashboardPage() {
             <Typography color="text.secondary" variant="body2">No calls scheduled for this day.</Typography>
           ) : (
             data.todays_calls.map((call) => (
-              <Box key={call.id} sx={{ p: 1.5, bgcolor: 'grey.50', borderRadius: 2, mb: 1, cursor: 'pointer' }} onClick={() => router.push(`/contacts/${call.id}`)}>
+              <Box key={call.id} sx={{ p: 1.5, bgcolor: 'grey.50', borderRadius: 1, mb: 1, cursor: 'pointer' }} onClick={() => router.push(`/contacts/${call.id}`)}>
                 <Typography sx={{ fontWeight: 600 }}>{call.name}</Typography>
                 <Typography variant="body2" color="text.secondary">
                   {call.call_date_time ? formatArizonaDate(call.call_date_time) : 'No date set'}
@@ -336,7 +331,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Selected Day Sessions */}
-      <Card sx={{ mb: 3 }}>
+      <Card variant="outlined" sx={{ mb: 2 }}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <EventIcon sx={{ color: 'primary.main' }} />
@@ -360,7 +355,7 @@ export default function DashboardPage() {
                 };
                 
                 return (
-                <Box key={`fs-${s.id}`} sx={{ p: 1.5, bgcolor: getBackgroundColor(), borderRadius: 2, mb: 1 }}>
+                <Box key={`fs-${s.id}`} sx={{ p: 1.5, bgcolor: getBackgroundColor(), borderRadius: 1, mb: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Box>
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -447,7 +442,7 @@ export default function DashboardPage() {
                 };
                 
                 return (
-                <Box key={`s-${s.id}`} sx={{ p: 1.5, bgcolor: getBackgroundColor(), borderRadius: 2, mb: 1 }}>
+                <Box key={`s-${s.id}`} sx={{ p: 1.5, bgcolor: getBackgroundColor(), borderRadius: 1, mb: 1 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Box>
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -526,54 +521,47 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Pending Reminders */}
-      <Card sx={{ mb: 3 }}>
+      {/* Pending Session Texts */}
+      <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <NotificationsIcon sx={{ color: data.pending_reminders.length > 0 ? 'error.main' : 'primary.main' }} />
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Text Reminders ({data.pending_reminders.length}) — {selectedDayLabel}
+              Session Texts ({data.pending_reminders.length}) — {selectedDayLabel}
             </Typography>
           </Box>
           {data.pending_reminders.length === 0 ? (
-            <Typography color="text.secondary" variant="body2">No reminders due right now.</Typography>
+            <Typography color="text.secondary" variant="body2">No session texts due right now.</Typography>
           ) : (
-            reminderGroups.map((group) => (
-              <Box key={group.key} sx={{ mb: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                  {group.label} ({group.items.length})
-                </Typography>
-                {group.items.map((reminder) => (
-                  <Box key={reminder.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1.5, bgcolor: 'grey.50', borderRadius: 2, mb: 1 }}>
-                    <Box sx={{ cursor: 'pointer' }} onClick={() => router.push(`/contacts/${reminder.parent_id}`)}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                        <Typography sx={{ fontWeight: 600 }}>
-                          Text {reminder.parent_name}
-                          {reminder.reminder_category === 'session_reminder' && reminder.player_names && reminder.player_names.length > 0 && (
-                            <Typography component="span" color="text.secondary">
-                              {' '}
-                              ({reminder.player_names.join(', ')})
-                            </Typography>
-                          )}
+            data.pending_reminders.map((reminder) => (
+              <Box key={reminder.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1.5, bgcolor: 'grey.50', borderRadius: 1, mb: 1, gap: 2 }}>
+                <Box sx={{ cursor: 'pointer', minWidth: 0 }} onClick={() => router.push(`/contacts/${reminder.parent_id}`)}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Typography sx={{ fontWeight: 600 }}>
+                      Text {reminder.parent_name}
+                      {reminder.player_names && reminder.player_names.length > 0 && (
+                        <Typography component="span" color="text.secondary">
+                          {' '}
+                          ({reminder.player_names.join(', ')})
                         </Typography>
-                        {(reminder.due_days_ago ?? 0) > 0 && (
-                          <Chip
-                            label={(reminder.due_days_ago ?? 0) === 1 ? 'Due yesterday' : `Due ${reminder.due_days_ago} days ago`}
-                            size="small"
-                            color={(reminder.due_days_ago ?? 0) > 1 ? 'error' : 'warning'}
-                            sx={{ height: 20, '& .MuiChip-label': { px: 1, fontSize: '0.7rem' } }}
-                          />
-                        )}
-                      </Box>
-                      <Typography variant="body2" color="text.secondary">
-                        {reminderTypeLabels[reminder.reminder_type] || reminder.reminder_type}
-                      </Typography>
-                    </Box>
-                    <IconButton color="success" onClick={() => markReminderSent(reminder.id)} title="Mark as sent">
-                      <CheckIcon />
-                    </IconButton>
+                      )}
+                    </Typography>
+                    {(reminder.due_days_ago ?? 0) > 0 && (
+                      <Chip
+                        label={(reminder.due_days_ago ?? 0) === 1 ? 'Due yesterday' : `Due ${reminder.due_days_ago} days ago`}
+                        size="small"
+                        color={(reminder.due_days_ago ?? 0) > 1 ? 'error' : 'warning'}
+                        sx={{ height: 20, '& .MuiChip-label': { px: 1, fontSize: '0.7rem' } }}
+                      />
+                    )}
                   </Box>
-                ))}
+                  <Typography variant="body2" color="text.secondary">
+                    {reminderTypeLabels[reminder.reminder_type] || reminder.reminder_type}
+                  </Typography>
+                </Box>
+                <IconButton color="success" onClick={() => markReminderSent(reminder.id)} title="Mark as sent">
+                  <CheckIcon />
+                </IconButton>
               </Box>
             ))
           )}

@@ -10,6 +10,9 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+const DEFAULT_EXPENSE_LIMIT = 25;
+const MAX_EXPENSE_LIMIT = 100;
+
 interface ExpenseRow {
   id: number;
   expense_date: string;
@@ -55,9 +58,17 @@ export async function GET(request: NextRequest) {
     await ensureExpensesSchema();
 
     const year = normalizeExpenseYear(request.nextUrl.searchParams.get('year'));
+    const limitRaw = Number(request.nextUrl.searchParams.get('limit') ?? DEFAULT_EXPENSE_LIMIT);
+    const offsetRaw = Number(request.nextUrl.searchParams.get('offset') ?? 0);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.max(1, Math.min(MAX_EXPENSE_LIMIT, Math.trunc(limitRaw)))
+      : DEFAULT_EXPENSE_LIMIT;
+    const offset = Number.isFinite(offsetRaw)
+      ? Math.max(0, Math.trunc(offsetRaw))
+      : 0;
     const { start, end } = getExpenseYearBounds(year);
 
-    const [expensesResult, totalsResult] = await Promise.all([
+    const [expensesResult, totalsResult, countResult] = await Promise.all([
       query(
         `
           SELECT
@@ -78,8 +89,10 @@ export async function GET(request: NextRequest) {
           WHERE expense_date >= $1::date
             AND expense_date < $2::date
           ORDER BY expense_date DESC, id DESC
+          LIMIT $3
+          OFFSET $4
         `,
-        [start, end]
+        [start, end, limit, offset]
       ),
       query(
         `
@@ -92,14 +105,27 @@ export async function GET(request: NextRequest) {
         `,
         [start, end]
       ),
+      query(
+        `
+          SELECT COUNT(*)::int AS total_count
+          FROM crm_expenses
+          WHERE expense_date >= $1::date
+            AND expense_date < $2::date
+        `,
+        [start, end]
+      ),
     ]);
 
     const totals = totalsResult.rows[0] ?? { gross_spent: 0, business_spent: 0 };
+    const count = countResult.rows[0] ?? { total_count: 0 };
     const expenses = (expensesResult.rows as ExpenseRow[]).map(mapExpense);
 
     return jsonResponse({
       year,
       expenses,
+      total_count: Number(count.total_count ?? 0),
+      limit,
+      offset,
       totals: {
         gross_spent: round2(asNumber(totals.gross_spent)),
         business_spent: round2(asNumber(totals.business_spent)),

@@ -11,6 +11,7 @@ import {
   normalizeSessionTitle,
   parseGuestEmails,
 } from '@/lib/session-calendar-fields';
+import { ensureStaffTables } from '@/app/api/staff/route';
 import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await ensureSessionCalendarColumns();
+    await ensureStaffTables();
 
     const body = await request.json();
     const {
@@ -68,6 +70,7 @@ export async function POST(request: NextRequest) {
       price,
       package_id,
       notes,
+      coach_id,
     } = body;
 
     if (!parent_id || !session_date) {
@@ -101,8 +104,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await query(
-      `INSERT INTO crm_sessions (parent_id, title, session_date, session_end_date, location, price, package_id, notes, guest_emails, send_email_updates)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO crm_sessions (parent_id, title, session_date, session_end_date, location, price, package_id, notes, guest_emails, send_email_updates, coach_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         parent_id,
@@ -115,6 +118,7 @@ export async function POST(request: NextRequest) {
         notes || null,
         guestEmails,
         sendEmailUpdates,
+        coach_id || null,
       ]
     );
 

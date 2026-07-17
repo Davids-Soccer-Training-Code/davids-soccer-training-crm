@@ -12,6 +12,13 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "cd /Users/davidfales/Coerver-Colorado && npm run dev"],
       "port": 3000
+    },
+    {
+      "name": "Staff Verify",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev"],
+      "port": 3100,
+      "autoPort": true
     }
   ]
 }

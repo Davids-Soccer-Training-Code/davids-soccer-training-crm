@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
@@ -49,6 +49,8 @@ interface PackageRow {
   amount_received: number | string | null;
   start_date: string | null;
   is_active: boolean;
+  coach_id: number | null;
+  coach_name: string | null;
 }
 
 type ParentOption = Parent & {
@@ -70,6 +72,9 @@ export default function PackagesPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PackageRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [staff, setStaff] = useState<{ id: number; name: string }[]>([]);
+  const [coachId, setCoachId] = useState('');
+  const coachTouchedRef = useRef(false);
 
   const fetchPackages = async () => {
     setLoading(true);
@@ -84,6 +89,26 @@ export default function PackagesPage() {
 
   useEffect(() => { fetchPackages(); }, []);
 
+  useEffect(() => {
+    fetch('/api/staff').then((r) => r.json()).then((rows) =>
+      setStaff(rows.map((s: { id: number; name: string }) => ({ id: s.id, name: s.name })))
+    );
+  }, []);
+
+  // Autofill coach from the selected parent's players (unless the user overrode it)
+  useEffect(() => {
+    if (!parentId) { setCoachId(''); coachTouchedRef.current = false; return; }
+    if (coachTouchedRef.current) return;
+    fetch(`/api/parents/${parentId}/players`)
+      .then((r) => r.json())
+      .then((players: { coach_id?: number | null }[]) => {
+        if (coachTouchedRef.current) return;
+        const withCoach = players.find((pl) => pl.coach_id != null);
+        setCoachId(withCoach?.coach_id != null ? String(withCoach.coach_id) : '');
+      })
+      .catch(() => {});
+  }, [parentId]);
+
   const handleCreate = async () => {
     if (!parentId || !packageType) return;
     setSaving(true);
@@ -95,6 +120,7 @@ export default function PackagesPage() {
         package_type: packageType,
         price: price ? parseFloat(price) : null,
         start_date: startDate || null,
+        coach_id: coachId ? parseInt(coachId) : null,
       }),
     });
     if (res.ok) {
@@ -103,6 +129,8 @@ export default function PackagesPage() {
       setPackageType('');
       setPrice('');
       setStartDate('');
+      setCoachId('');
+      coachTouchedRef.current = false;
       fetchPackages();
     }
     setSaving(false);
@@ -173,6 +201,11 @@ export default function PackagesPage() {
                 <Typography variant="body2" color="text.secondary">
                   {packageTypeLabels[pkg.package_type] || pkg.package_type}
                 </Typography>
+                {pkg.coach_name && (
+                  <Typography variant="body2" color="text.secondary">
+                    Coach: {pkg.coach_name}
+                  </Typography>
+                )}
               </Box>
               <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
                 <Chip label={pkg.is_active ? 'Still Doing' : 'Completed'} color={pkg.is_active ? 'success' : 'default'} size="small" />
@@ -283,6 +316,19 @@ export default function PackagesPage() {
             <TextField label="Package Type *" value={packageType} onChange={(e) => setPackageType(e.target.value)} select fullWidth>
               {Object.entries(packageTypeLabels).map(([val, label]) => (
                 <MenuItem key={val} value={val}>{label}</MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              label="Coach"
+              value={coachId}
+              onChange={(e) => { coachTouchedRef.current = true; setCoachId(e.target.value); }}
+              select
+              fullWidth
+              helperText="Autofills from the parent's assigned coach; change if needed."
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {staff.map((s) => (
+                <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
               ))}
             </TextField>
             <TextField label="Total Price ($)" value={price} onChange={(e) => setPrice(e.target.value)} type="number" fullWidth />

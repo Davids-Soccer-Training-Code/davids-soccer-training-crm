@@ -35,6 +35,9 @@ export async function ensureStaffTables(): Promise<void> {
     await query(
       `ALTER TABLE crm_sessions ADD COLUMN IF NOT EXISTS coach_id INTEGER REFERENCES crm_staff(id) ON DELETE SET NULL`
     );
+    await query(
+      `ALTER TABLE crm_packages ADD COLUMN IF NOT EXISTS coach_id INTEGER REFERENCES crm_staff(id) ON DELETE SET NULL`
+    );
   })().catch((error) => {
     ensureStaffTablesPromise = null;
     throw error;

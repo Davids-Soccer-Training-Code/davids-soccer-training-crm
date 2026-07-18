@@ -12,6 +12,8 @@
     "detect-cold": "tsx scripts/detect-cold-leads.ts",
     "backfill-reminders": "tsx scripts/backfill-reminders.ts",
     "backfill-session-guests": "tsx scripts/backfill-session-guests.ts",
+    "backfill-package-coaches": "tsx scripts/backfill-package-coaches.ts",
+    "backfill-session-coaches": "tsx scripts/backfill-session-coaches.ts",
     "test-reminders": "tsx scripts/test-sms-reminders.ts",
     "test-calendars": "tsx scripts/test-google-calendars.ts",
     "sync-calendars": "tsx scripts/sync-google-calendars.ts",

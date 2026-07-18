@@ -47,13 +47,23 @@ export default function SessionForm() {
   const [isFirstSession, setIsFirstSession] = useState(false);
   const [depositPaid, setDepositPaid] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
+  const [staff, setStaff] = useState<{ id: number; name: string }[]>([]);
+  const [coachId, setCoachId] = useState('');
+  const coachTouchedRef = useRef(false);
 
   useEffect(() => {
     fetch('/api/parents').then((r) => r.json()).then(setParents);
   }, []);
 
+  useEffect(() => {
+    fetch('/api/staff').then((r) => r.json()).then((rows) =>
+      setStaff(rows.map((s: { id: number; name: string }) => ({ id: s.id, name: s.name })))
+    );
+  }, []);
+
   // Fetch players when parent is selected
   useEffect(() => {
+    coachTouchedRef.current = false;
     if (parentId) {
       fetch(`/api/parents/${parentId}/players`)
         .then((r) => r.json())
@@ -62,6 +72,17 @@ export default function SessionForm() {
       setPlayers([]);
     }
   }, [parentId]);
+
+  // Autofill coach from the first selected player that has one (unless user overrode it)
+  useEffect(() => {
+    if (coachTouchedRef.current) return;
+    const selectedIds = playerIds.map(String);
+    const selected = players.filter((pl) => selectedIds.includes(String(pl.id)));
+    const withCoach = selected.find(
+      (pl) => (pl as Player & { coach_id?: number | null }).coach_id != null
+    ) as (Player & { coach_id?: number | null }) | undefined;
+    setCoachId(withCoach?.coach_id != null ? String(withCoach.coach_id) : '');
+  }, [players, playerIds]);
 
   // Auto-detect if this should be a first session
   useEffect(() => {
@@ -105,6 +126,7 @@ export default function SessionForm() {
         location: location || null,
         price: packageId ? null : (price ? parseFloat(price) : null), // No price for package sessions
         notes: notes || null,
+        coach_id: coachId ? parseInt(coachId) : null,
         guest_emails: guestEmails
           .split(/[,\n;]+/)
           .map((email) => email.trim())
@@ -186,6 +208,20 @@ export default function SessionForm() {
             >
               {players.map((pl: Player) => (
                 <MenuItem key={pl.id} value={pl.id}>{pl.name}</MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              label="Coach"
+              value={coachId}
+              onChange={(e) => { coachTouchedRef.current = true; setCoachId(e.target.value); }}
+              select
+              fullWidth
+              helperText="Autofills from the selected player; change if needed."
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {staff.map((s) => (
+                <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
               ))}
             </TextField>
 

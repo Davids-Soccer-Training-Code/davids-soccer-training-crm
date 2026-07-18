@@ -28,6 +28,7 @@ import EmailIcon from '@mui/icons-material/Email';
 import SmsIcon from '@mui/icons-material/Sms';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
+import BadgeIcon from '@mui/icons-material/Badge';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 
@@ -37,6 +38,7 @@ const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: <DashboardIcon /> },
   { label: 'Contacts', href: '/contacts', icon: <PeopleIcon /> },
   { label: 'Customers', href: '/customers', icon: <StarIcon /> },
+  { label: 'Staff', href: '/staff', icon: <BadgeIcon /> },
   { label: 'Sessions', href: '/sessions', icon: <EventIcon /> },
   { label: 'Group Sessions', href: '/group-sessions', icon: <GroupsIcon /> },
   { label: 'Packages', href: '/packages', icon: <CardGiftcardIcon /> },

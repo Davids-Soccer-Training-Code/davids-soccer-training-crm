@@ -1,11 +1,13 @@
 import { query } from '@/lib/db';
 import { jsonResponse, errorResponse } from '@/lib/api-helpers';
+import { ensureStaffTables } from '@/app/api/staff/route';
 import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    await ensureStaffTables();
     const result = await query(`
       SELECT
         pkg.id,
@@ -30,10 +32,13 @@ export async function GET() {
         pkg.is_active,
         pkg.created_at,
         pkg.updated_at,
+        pkg.coach_id,
+        st.name as coach_name,
         p.name as parent_name,
         (SELECT ARRAY_AGG(name ORDER BY created_at) FROM crm_players WHERE parent_id = p.id) as player_names
       FROM crm_packages pkg
       JOIN crm_parents p ON p.id = pkg.parent_id
+      LEFT JOIN crm_staff st ON st.id = pkg.coach_id
       ORDER BY pkg.is_active DESC, pkg.created_at DESC
     `);
     return jsonResponse(result.rows);
@@ -45,8 +50,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureStaffTables();
     const body = await request.json();
-    const { parent_id, package_type, price, start_date, amount_received } = body;
+    const { parent_id, package_type, price, start_date, amount_received, coach_id } = body;
 
     if (!parent_id || !package_type) {
       return errorResponse('Parent and package type are required', 400);
@@ -81,10 +87,10 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await query(
-      `INSERT INTO crm_packages (parent_id, package_type, total_sessions, price, start_date, amount_received)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO crm_packages (parent_id, package_type, total_sessions, price, start_date, amount_received, coach_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
-      [parent_id, package_type, totalSessions, parsedPrice, start_date || null, initialAmountReceived]
+      [parent_id, package_type, totalSessions, parsedPrice, start_date || null, initialAmountReceived, coach_id || null]
     );
     const createdPackage = result.rows[0];
 

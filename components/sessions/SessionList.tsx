@@ -46,6 +46,8 @@ interface SessionRow {
   payment_method: string | null;
   deposit_paid?: boolean;
   deposit_amount?: number | null;
+  coach_id?: number | null;
+  coach_name?: string | null;
 }
 
 interface Player {
@@ -87,8 +89,16 @@ export default function SessionList() {
     guest_emails: '',
     send_email_updates: false,
     player_ids: [] as number[],
+    coach_id: '' as string,
   });
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
+  const [staff, setStaff] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch('/api/staff').then((r) => r.json()).then((rows) =>
+      setStaff(rows.map((s: { id: number; name: string }) => ({ id: s.id, name: s.name })))
+    ).catch(() => {});
+  }, []);
   const [undoStateBySession, setUndoStateBySession] = useState<Record<string, UndoState>>({});
   const [undoInProgressKey, setUndoInProgressKey] = useState<string | null>(null);
 
@@ -290,6 +300,7 @@ export default function SessionList() {
         : (session.parent_email || liveParentEmail || ''),
       send_email_updates: session.send_email_updates === true,
       player_ids: session.player_ids || [],
+      coach_id: session.coach_id != null ? String(session.coach_id) : '',
     });
     setEditDialog({ session, type });
   };
@@ -313,6 +324,10 @@ export default function SessionList() {
         .filter(Boolean),
       send_email_updates: editForm.send_email_updates,
     };
+    // Coach only applies to regular sessions
+    if (type === 'regular') {
+      sessionPayload.coach_id = editForm.coach_id ? parseInt(editForm.coach_id) : null;
+    }
 
     await fetch(endpoint, {
       method: 'PATCH',
@@ -440,6 +455,11 @@ export default function SessionList() {
                   <Typography variant="body2" color="text.secondary">
                     Email Updates: {session.send_email_updates ? 'On' : 'Off'}
                   </Typography>
+                  {session.sessionType === 'regular' && (
+                    <Typography variant="body2" color={session.coach_name ? 'text.secondary' : 'warning.main'}>
+                      Coach: {session.coach_name || 'Not assigned'}
+                    </Typography>
+                  )}
                   {session.sessionType === 'first' && session.deposit_paid && (
                     <Typography variant="body2" color="primary.main">
                       Deposit: ${session.deposit_amount || 'Paid'}
@@ -669,6 +689,22 @@ export default function SessionList() {
               >
                 {availablePlayers.map((player) => (
                   <MenuItem key={player.id} value={player.id}>{player.name}</MenuItem>
+                ))}
+              </TextField>
+            )}
+            {editDialog?.type === 'regular' && (
+              <TextField
+                label="Coach"
+                select
+                fullWidth
+                value={editForm.coach_id}
+                onChange={(e) => setEditForm({ ...editForm, coach_id: e.target.value })}
+                error={!editForm.coach_id}
+                helperText={editForm.coach_id ? 'Every session should have a coach.' : 'No coach assigned — please pick one.'}
+              >
+                <MenuItem value="">— None —</MenuItem>
+                {staff.map((s) => (
+                  <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                 ))}
               </TextField>
             )}

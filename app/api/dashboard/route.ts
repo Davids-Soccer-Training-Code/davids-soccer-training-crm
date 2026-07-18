@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import { jsonResponse, errorResponse } from "@/lib/api-helpers";
+import { ensureStaffTables } from "@/app/api/staff/route";
 
 function normalizeToUtcIso(value: unknown): string | null {
   if (value == null) return null;
@@ -25,6 +26,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
+    await ensureStaffTables();
     // Use Arizona timezone for all date calculations.
     const { start: todayStart, end: todayEnd } = getTodayBoundsArizona();
     const dayOffsetRaw = Number(request.nextUrl.searchParams.get("dayOffset") ?? "0");
@@ -88,17 +90,18 @@ export async function GET(request: NextRequest) {
 
     // Selected-day regular sessions (exclude cancelled and completed)
     const sessionsResult = await query(
-      `SELECT s.*, p.name as parent_name,
+      `SELECT s.*, p.name as parent_name, st.name as coach_name,
         ARRAY_AGG(pl.name) FILTER (WHERE pl.name IS NOT NULL) as player_names,
         ARRAY_AGG(pl.id) FILTER (WHERE pl.id IS NOT NULL) as player_ids
        FROM crm_sessions s
        JOIN crm_parents p ON p.id = s.parent_id
+       LEFT JOIN crm_staff st ON st.id = s.coach_id
        LEFT JOIN crm_session_players sp ON sp.session_id = s.id
        LEFT JOIN crm_players pl ON pl.id = sp.player_id
        WHERE s.session_date >= $1 AND s.session_date <= $2
        AND (s.status IS NULL OR s.status NOT IN ('cancelled', 'completed'))
        AND COALESCE(p.is_dead, false) = false
-       GROUP BY s.id, p.name
+       GROUP BY s.id, p.name, st.name
        ORDER BY s.session_date`,
       [selectedStart, selectedEnd]
     );
@@ -226,17 +229,18 @@ export async function GET(request: NextRequest) {
 
     // Upcoming regular sessions (next 3 months, exclude cancelled and completed)
     const upcomingSessionsResult = await query(
-      `SELECT s.*, p.name as parent_name,
+      `SELECT s.*, p.name as parent_name, st.name as coach_name,
         ARRAY_AGG(pl.name) FILTER (WHERE pl.name IS NOT NULL) as player_names,
         ARRAY_AGG(pl.id) FILTER (WHERE pl.id IS NOT NULL) as player_ids
        FROM crm_sessions s
        JOIN crm_parents p ON p.id = s.parent_id
+       LEFT JOIN crm_staff st ON st.id = s.coach_id
        LEFT JOIN crm_session_players sp ON sp.session_id = s.id
        LEFT JOIN crm_players pl ON pl.id = sp.player_id
        WHERE s.session_date >= $1 AND s.session_date <= $2
        AND (s.status IS NULL OR s.status NOT IN ('cancelled', 'completed'))
        AND COALESCE(p.is_dead, false) = false
-       GROUP BY s.id, p.name
+       GROUP BY s.id, p.name, st.name
        ORDER BY s.session_date`,
       [todayStart, futureDateStr]
     );

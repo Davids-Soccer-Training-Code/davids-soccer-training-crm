@@ -49,7 +49,7 @@ const DAY_OFFSET_MAX = 30;
 interface DashboardData {
   todays_calls: Array<{ id: number; name: string; call_date_time: string | null; phone: string }>;
   todays_first_sessions: Array<{ id: number; parent_id: number; parent_name: string; player_names: string[] | null; player_ids: number[] | null; session_date: string; location: string | null; price: number | null; status: string }>;
-  todays_sessions: Array<{ id: number; parent_id: number; parent_name: string; player_names: string[] | null; player_ids: number[] | null; session_date: string; location: string | null; price: number | null; status: string }>;
+  todays_sessions: Array<{ id: number; parent_id: number; parent_name: string; player_names: string[] | null; player_ids: number[] | null; session_date: string; location: string | null; price: number | null; status: string; coach_id: number | null; coach_name: string | null }>;
   pending_reminders: Array<{ id: number; parent_name: string; parent_id: number; reminder_type: string; reminder_category: string; due_at: string; due_days_ago?: number; parent_dm_status: string | null; player_names: string[] | null }>;
   stats: { total_contacts: number; sessions_this_week: number; revenue_this_month: number };
   selected_day_offset?: number;
@@ -78,8 +78,16 @@ export default function DashboardPage() {
     location: '',
     price: '',
     player_ids: [] as number[],
+    coach_id: '' as string,
   });
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([]);
+  const [staff, setStaff] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch('/api/staff').then((r) => r.json()).then((rows) =>
+      setStaff(rows.map((s: { id: number; name: string }) => ({ id: s.id, name: s.name })))
+    ).catch(() => {});
+  }, []);
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -147,11 +155,13 @@ export default function DashboardPage() {
       setAvailablePlayers(players);
     }
     
+    const coachId = (session as { coach_id?: number | null }).coach_id;
     setEditForm({
       session_date: toDatetimeLocal(session.session_date),
       location: session.location || '',
       price: session.price?.toString() || '',
       player_ids: session.player_ids || [],
+      coach_id: coachId != null ? String(coachId) : '',
     });
     setEditDialog({ id: session.id, parent_id: session.parent_id, type });
   };
@@ -164,14 +174,19 @@ export default function DashboardPage() {
       : `/api/sessions/${id}`;
 
     // Update session details
+    const patchBody: Record<string, unknown> = {
+      session_date: editForm.session_date,
+      location: editForm.location.trim() || null,
+      price: editForm.price ? parseFloat(editForm.price) : null,
+    };
+    // Coach only applies to regular sessions
+    if (type === 'regular') {
+      patchBody.coach_id = editForm.coach_id ? parseInt(editForm.coach_id) : null;
+    }
     await fetch(endpoint, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_date: editForm.session_date,
-        location: editForm.location.trim() || null,
-        price: editForm.price ? parseFloat(editForm.price) : null,
-      }),
+      body: JSON.stringify(patchBody),
     });
 
     // Update players
@@ -465,6 +480,11 @@ export default function DashboardPage() {
                         {s.location && ` — ${s.location}`}
                         {s.price && ` — $${s.price}`}
                       </Typography>
+                      {s.coach_name ? (
+                        <Chip label={`Coach: ${s.coach_name}`} size="small" variant="outlined" sx={{ mt: 0.5 }} />
+                      ) : (
+                        <Chip label="No coach assigned" size="small" color="warning" variant="outlined" sx={{ mt: 0.5 }} />
+                      )}
                     </Box>
                   </Box>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -599,7 +619,7 @@ export default function DashboardPage() {
                 label="Players (select multiple)"
                 select
                 fullWidth
-                SelectProps={{ 
+                SelectProps={{
                   multiple: true,
                   value: editForm.player_ids,
                   onChange: (e) => setEditForm({ ...editForm, player_ids: e.target.value as unknown as number[] })
@@ -607,6 +627,22 @@ export default function DashboardPage() {
               >
                 {availablePlayers.map((player) => (
                   <MenuItem key={player.id} value={player.id}>{player.name}</MenuItem>
+                ))}
+              </TextField>
+            )}
+            {editDialog?.type === 'regular' && (
+              <TextField
+                label="Coach"
+                select
+                fullWidth
+                value={editForm.coach_id}
+                onChange={(e) => setEditForm({ ...editForm, coach_id: e.target.value })}
+                error={!editForm.coach_id}
+                helperText={editForm.coach_id ? 'Every session should have a coach.' : 'No coach assigned — please pick one.'}
+              >
+                <MenuItem value="">— None —</MenuItem>
+                {staff.map((s) => (
+                  <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
                 ))}
               </TextField>
             )}

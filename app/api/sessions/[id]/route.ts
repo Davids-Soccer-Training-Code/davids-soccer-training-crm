@@ -14,6 +14,7 @@ import {
   normalizeSessionTitle,
   parseGuestEmails,
 } from '@/lib/session-calendar-fields';
+import { ensureStaffTables } from '@/app/api/staff/route';
 import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     await ensureSessionCalendarColumns();
+    await ensureStaffTables();
 
     const { id } = await params;
     const body = await request.json();
@@ -128,6 +130,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       'showed_up',
       'was_paid',
       'payment_method',
+      'coach_id',
     ];
     for (const field of allowedFields) {
       if (field in body) {

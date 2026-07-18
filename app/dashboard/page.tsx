@@ -48,7 +48,7 @@ const DAY_OFFSET_MAX = 30;
 
 interface DashboardData {
   todays_calls: Array<{ id: number; name: string; call_date_time: string | null; phone: string }>;
-  todays_first_sessions: Array<{ id: number; parent_id: number; parent_name: string; player_names: string[] | null; player_ids: number[] | null; session_date: string; location: string | null; price: number | null; status: string }>;
+  todays_first_sessions: Array<{ id: number; parent_id: number; parent_name: string; player_names: string[] | null; player_ids: number[] | null; session_date: string; location: string | null; price: number | null; status: string; coach_id: number | null; coach_name: string | null }>;
   todays_sessions: Array<{ id: number; parent_id: number; parent_name: string; player_names: string[] | null; player_ids: number[] | null; session_date: string; location: string | null; price: number | null; status: string; coach_id: number | null; coach_name: string | null }>;
   pending_reminders: Array<{ id: number; parent_name: string; parent_id: number; reminder_type: string; reminder_category: string; due_at: string; due_days_ago?: number; parent_dm_status: string | null; player_names: string[] | null }>;
   stats: { total_contacts: number; sessions_this_week: number; revenue_this_month: number };
@@ -179,10 +179,7 @@ export default function DashboardPage() {
       location: editForm.location.trim() || null,
       price: editForm.price ? parseFloat(editForm.price) : null,
     };
-    // Coach only applies to regular sessions
-    if (type === 'regular') {
-      patchBody.coach_id = editForm.coach_id ? parseInt(editForm.coach_id) : null;
-    }
+    patchBody.coach_id = editForm.coach_id ? parseInt(editForm.coach_id) : null;
     await fetch(endpoint, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -394,6 +391,11 @@ export default function DashboardPage() {
                         {s.location && ` — ${s.location}`}
                         {s.price && ` — $${s.price}`}
                       </Typography>
+                      {s.coach_name ? (
+                        <Chip label={`Coach: ${s.coach_name}`} size="small" variant="outlined" sx={{ mt: 0.5 }} />
+                      ) : (
+                        <Chip label="No coach assigned" size="small" color="warning" variant="outlined" sx={{ mt: 0.5 }} />
+                      )}
                     </Box>
                   </Box>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -630,22 +632,20 @@ export default function DashboardPage() {
                 ))}
               </TextField>
             )}
-            {editDialog?.type === 'regular' && (
-              <TextField
-                label="Coach"
-                select
-                fullWidth
-                value={editForm.coach_id}
-                onChange={(e) => setEditForm({ ...editForm, coach_id: e.target.value })}
-                error={!editForm.coach_id}
-                helperText={editForm.coach_id ? 'Every session should have a coach.' : 'No coach assigned — please pick one.'}
-              >
-                <MenuItem value="">— None —</MenuItem>
-                {staff.map((s) => (
-                  <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-                ))}
-              </TextField>
-            )}
+            <TextField
+              label="Coach"
+              select
+              fullWidth
+              value={editForm.coach_id}
+              onChange={(e) => setEditForm({ ...editForm, coach_id: e.target.value })}
+              error={!editForm.coach_id}
+              helperText={editForm.coach_id ? 'Every session should have a coach.' : 'No coach assigned — please pick one.'}
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {staff.map((s) => (
+                <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
+              ))}
+            </TextField>
           </Box>
         </DialogContent>
         <DialogActions>

@@ -73,17 +73,18 @@ export async function GET(request: NextRequest) {
 
     // Selected-day first sessions (exclude cancelled and completed)
     const firstSessionsResult = await query(
-      `SELECT fs.*, p.name as parent_name,
+      `SELECT fs.*, p.name as parent_name, st.name as coach_name,
         ARRAY_AGG(pl.name) FILTER (WHERE pl.name IS NOT NULL) as player_names,
         ARRAY_AGG(pl.id) FILTER (WHERE pl.id IS NOT NULL) as player_ids
        FROM crm_first_sessions fs
        JOIN crm_parents p ON p.id = fs.parent_id
+       LEFT JOIN crm_staff st ON st.id = fs.coach_id
        LEFT JOIN crm_first_session_players fsp ON fsp.first_session_id = fs.id
        LEFT JOIN crm_players pl ON pl.id = fsp.player_id
        WHERE fs.session_date >= $1 AND fs.session_date <= $2
        AND (fs.status IS NULL OR fs.status NOT IN ('cancelled', 'completed'))
        AND COALESCE(p.is_dead, false) = false
-       GROUP BY fs.id, p.name
+       GROUP BY fs.id, p.name, st.name
        ORDER BY fs.session_date`,
       [selectedStart, selectedEnd]
     );
@@ -212,17 +213,18 @@ export async function GET(request: NextRequest) {
 
     // Upcoming first sessions (next 3 months, exclude cancelled and completed)
     const upcomingFirstSessionsResult = await query(
-      `SELECT fs.*, p.name as parent_name,
+      `SELECT fs.*, p.name as parent_name, st.name as coach_name,
         ARRAY_AGG(pl.name) FILTER (WHERE pl.name IS NOT NULL) as player_names,
         ARRAY_AGG(pl.id) FILTER (WHERE pl.id IS NOT NULL) as player_ids
        FROM crm_first_sessions fs
        JOIN crm_parents p ON p.id = fs.parent_id
+       LEFT JOIN crm_staff st ON st.id = fs.coach_id
        LEFT JOIN crm_first_session_players fsp ON fsp.first_session_id = fs.id
        LEFT JOIN crm_players pl ON pl.id = fsp.player_id
        WHERE fs.session_date >= $1 AND fs.session_date <= $2
        AND (fs.status IS NULL OR fs.status NOT IN ('cancelled', 'completed'))
        AND COALESCE(p.is_dead, false) = false
-       GROUP BY fs.id, p.name
+       GROUP BY fs.id, p.name, st.name
        ORDER BY fs.session_date`,
       [todayStart, futureDateStr]
     );

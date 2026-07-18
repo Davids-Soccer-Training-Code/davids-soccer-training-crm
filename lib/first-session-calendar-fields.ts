@@ -14,6 +14,7 @@ export async function ensureFirstSessionCalendarColumns(): Promise<void> {
     await query(`ALTER TABLE crm_first_sessions ADD COLUMN IF NOT EXISTS session_end_date TIMESTAMP`);
     await query(`ALTER TABLE crm_first_sessions ADD COLUMN IF NOT EXISTS guest_emails TEXT[]`);
     await query(`ALTER TABLE crm_first_sessions ADD COLUMN IF NOT EXISTS send_email_updates BOOLEAN`);
+    await query(`ALTER TABLE crm_first_sessions ADD COLUMN IF NOT EXISTS coach_id INTEGER REFERENCES crm_staff(id) ON DELETE SET NULL`);
     await query(`ALTER TABLE crm_first_sessions ALTER COLUMN guest_emails SET DEFAULT '{}'::text[]`);
     await query(`ALTER TABLE crm_first_sessions ALTER COLUMN send_email_updates SET DEFAULT false`);
     await query(`

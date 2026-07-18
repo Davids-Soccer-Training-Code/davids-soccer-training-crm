@@ -324,10 +324,7 @@ export default function SessionList() {
         .filter(Boolean),
       send_email_updates: editForm.send_email_updates,
     };
-    // Coach only applies to regular sessions
-    if (type === 'regular') {
-      sessionPayload.coach_id = editForm.coach_id ? parseInt(editForm.coach_id) : null;
-    }
+    sessionPayload.coach_id = editForm.coach_id ? parseInt(editForm.coach_id) : null;
 
     await fetch(endpoint, {
       method: 'PATCH',
@@ -455,11 +452,9 @@ export default function SessionList() {
                   <Typography variant="body2" color="text.secondary">
                     Email Updates: {session.send_email_updates ? 'On' : 'Off'}
                   </Typography>
-                  {session.sessionType === 'regular' && (
-                    <Typography variant="body2" color={session.coach_name ? 'text.secondary' : 'warning.main'}>
-                      Coach: {session.coach_name || 'Not assigned'}
-                    </Typography>
-                  )}
+                  <Typography variant="body2" color={session.coach_name ? 'text.secondary' : 'warning.main'}>
+                    Coach: {session.coach_name || 'Not assigned'}
+                  </Typography>
                   {session.sessionType === 'first' && session.deposit_paid && (
                     <Typography variant="body2" color="primary.main">
                       Deposit: ${session.deposit_amount || 'Paid'}
@@ -692,22 +687,20 @@ export default function SessionList() {
                 ))}
               </TextField>
             )}
-            {editDialog?.type === 'regular' && (
-              <TextField
-                label="Coach"
-                select
-                fullWidth
-                value={editForm.coach_id}
-                onChange={(e) => setEditForm({ ...editForm, coach_id: e.target.value })}
-                error={!editForm.coach_id}
-                helperText={editForm.coach_id ? 'Every session should have a coach.' : 'No coach assigned — please pick one.'}
-              >
-                <MenuItem value="">— None —</MenuItem>
-                {staff.map((s) => (
-                  <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-                ))}
-              </TextField>
-            )}
+            <TextField
+              label="Coach"
+              select
+              fullWidth
+              value={editForm.coach_id}
+              onChange={(e) => setEditForm({ ...editForm, coach_id: e.target.value })}
+              error={!editForm.coach_id}
+              helperText={editForm.coach_id ? 'Every session should have a coach.' : 'No coach assigned — please pick one.'}
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {staff.map((s) => (
+                <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
+              ))}
+            </TextField>
           </Box>
         </DialogContent>
         <DialogActions>

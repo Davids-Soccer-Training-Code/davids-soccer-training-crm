@@ -126,6 +126,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       'notes',
       'guest_emails',
       'send_email_updates',
+      'coach_id',
       'status',
       'cancelled',
       'showed_up',

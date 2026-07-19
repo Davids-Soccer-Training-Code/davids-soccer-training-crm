@@ -12,6 +12,7 @@ const COACH_PAYOUT_RATE = 0.5;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 type SessionKind = 'first' | 'package' | 'session';
+type CoachSource = 'session' | 'package' | 'player';
 
 interface WeekSession {
   id: number;
@@ -20,6 +21,7 @@ interface WeekSession {
   parent_name: string;
   player_names: string[];
   value: number;
+  coach_source: CoachSource | null;
 }
 
 interface CoachGroup {
@@ -53,12 +55,38 @@ export async function GET(request: NextRequest) {
 
     // Regular + package sessions. Package sessions are valued at the package's
     // per-session rate (price / total_sessions) rather than their own price.
+    //
+    // A session's coach is resolved with a fallback chain: the session's own
+    // coach_id, else the coach on its package, else the coach the session's
+    // players are assigned to (modal, tie-break by lowest staff id). This
+    // matches how the app assigns coaches elsewhere, so a session that belongs
+    // to a coach's package/players is attributed to them even if the session
+    // row itself was never given an explicit coach.
     const regularResult = await query(
-      `SELECT
+      `WITH player_coach AS (
+         SELECT session_id, coach_id FROM (
+           SELECT
+             sp.session_id,
+             pl.coach_id,
+             ROW_NUMBER() OVER (
+               PARTITION BY sp.session_id
+               ORDER BY COUNT(*) DESC, pl.coach_id ASC
+             ) AS rn
+           FROM crm_session_players sp
+           JOIN crm_players pl ON pl.id = sp.player_id
+           WHERE pl.coach_id IS NOT NULL
+           GROUP BY sp.session_id, pl.coach_id
+         ) ranked
+         WHERE rn = 1
+       )
+       SELECT
          s.id,
          s.session_date,
-         s.coach_id,
-         st.name AS coach_name,
+         s.coach_id AS own_coach_id,
+         pkg.coach_id AS package_coach_id,
+         pc.coach_id AS player_coach_id,
+         COALESCE(s.coach_id, pkg.coach_id, pc.coach_id) AS coach_id,
+         est.name AS coach_name,
          p.name AS parent_name,
          (s.package_id IS NOT NULL) AS is_package,
          CASE
@@ -69,14 +97,15 @@ export async function GET(request: NextRequest) {
          ARRAY_AGG(pl.name) FILTER (WHERE pl.name IS NOT NULL) AS player_names
        FROM crm_sessions s
        JOIN crm_parents p ON p.id = s.parent_id
-       LEFT JOIN crm_staff st ON st.id = s.coach_id
        LEFT JOIN crm_packages pkg ON pkg.id = s.package_id
+       LEFT JOIN player_coach pc ON pc.session_id = s.id
+       LEFT JOIN crm_staff est ON est.id = COALESCE(s.coach_id, pkg.coach_id, pc.coach_id)
        LEFT JOIN crm_session_players sp ON sp.session_id = s.id
        LEFT JOIN crm_players pl ON pl.id = sp.player_id
        WHERE s.session_date >= $1 AND s.session_date < $2
          AND COALESCE(s.cancelled, false) = false
          AND COALESCE(s.status, '') <> 'cancelled'
-       GROUP BY s.id, st.name, p.name, pkg.price, pkg.total_sessions
+       GROUP BY s.id, s.coach_id, pkg.coach_id, pc.coach_id, est.name, p.name, pkg.price, pkg.total_sessions
        ORDER BY s.session_date`,
       [startIso, endIso]
     );
@@ -126,6 +155,13 @@ export async function GET(request: NextRequest) {
 
     for (const row of regularResult.rows) {
       const value = row.value == null ? 0 : Number(row.value);
+      // Where the resolved coach came from, for a UI hint on inferred ones.
+      let coachSource: CoachSource | null = null;
+      if (row.coach_id != null) {
+        if (row.own_coach_id != null) coachSource = 'session';
+        else if (row.package_coach_id != null) coachSource = 'package';
+        else coachSource = 'player';
+      }
       addSession(row.coach_id, row.coach_name, {
         id: row.id,
         kind: row.is_package ? 'package' : 'session',
@@ -133,6 +169,7 @@ export async function GET(request: NextRequest) {
         parent_name: row.parent_name,
         player_names: Array.isArray(row.player_names) ? row.player_names : [],
         value,
+        coach_source: coachSource,
       });
     }
 
@@ -145,6 +182,7 @@ export async function GET(request: NextRequest) {
         parent_name: row.parent_name,
         player_names: [],
         value,
+        coach_source: row.coach_id != null ? 'session' : null,
       });
     }
 

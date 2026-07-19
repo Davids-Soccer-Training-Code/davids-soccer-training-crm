@@ -62,6 +62,7 @@ interface PaymentSession {
   parent_name: string;
   player_names: string[];
   value: number;
+  coach_source: 'session' | 'package' | 'player' | null;
 }
 
 interface CoachPayments {
@@ -374,6 +375,15 @@ export default function StaffPage() {
                               {formatSessionWhen(s.session_date)} — {s.player_names.length > 0 ? s.player_names.join(', ') : s.parent_name}
                             </Typography>
                             <Chip label={KIND_LABELS[s.kind]} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
+                            {(s.coach_source === 'package' || s.coach_source === 'player') && (
+                              <Chip
+                                label={s.coach_source === 'package' ? 'via package' : 'via player'}
+                                size="small"
+                                color="info"
+                                variant="outlined"
+                                sx={{ height: 18, fontSize: '0.65rem' }}
+                              />
+                            )}
                           </Box>
                           <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }} color="text.secondary">{money(s.value)}</Typography>
                         </Box>

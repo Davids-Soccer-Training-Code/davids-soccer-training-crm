@@ -55,6 +55,79 @@ const EMPTY_FORM: StaffForm = {
   preferred_times: '', player_ids: [],
 };
 
+interface PaymentSession {
+  id: number;
+  kind: 'first' | 'package' | 'session';
+  session_date: string;
+  parent_name: string;
+  player_names: string[];
+  value: number;
+}
+
+interface CoachPayments {
+  coach_id: number | null;
+  coach_name: string | null;
+  sessions: PaymentSession[];
+  total_value: number;
+  coach_payout: number;
+}
+
+interface PaymentsResponse {
+  week_start: string;
+  week_end: string;
+  payout_rate: number;
+  grand_total_value: number;
+  grand_total_payout: number;
+  coaches: CoachPayments[];
+}
+
+const KIND_LABELS: Record<PaymentSession['kind'], string> = {
+  first: 'First session',
+  package: 'Package session',
+  session: 'Session',
+};
+
+// Today's calendar date in Arizona, as YYYY-MM-DD.
+function arizonaTodayStr(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Phoenix' });
+}
+
+// Monday (YYYY-MM-DD) of the week containing dateStr, shifted by weekOffset
+// weeks. Uses UTC arithmetic on the plain calendar date to avoid DST/tz drift.
+function mondayOf(dateStr: string, weekOffset = 0): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = dt.getUTCDay(); // 0 Sun .. 6 Sat
+  const diffToMonday = dow === 0 ? -6 : 1 - dow;
+  dt.setUTCDate(dt.getUTCDate() + diffToMonday + weekOffset * 7);
+  return dt.toISOString().slice(0, 10);
+}
+
+function formatWeekRange(mondayStr: string): string {
+  const [y, m, d] = mondayStr.split('-').map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d));
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  const fmt = (dt: Date) =>
+    dt.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
+  return `${fmt(start)} – ${fmt(end)}, ${end.getUTCFullYear()}`;
+}
+
+function formatSessionWhen(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', {
+    timeZone: 'America/Phoenix',
+    weekday: 'short',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function money(value: number): string {
+  return `$${(value || 0).toFixed(2)}`;
+}
+
 export default function StaffPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [players, setPlayers] = useState<PlayerOption[]>([]);
@@ -70,7 +143,27 @@ export default function StaffPage() {
   const [deleteTarget, setDeleteTarget] = useState<Staff | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [payments, setPayments] = useState<PaymentsResponse | null>(null);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+
+  const weekStart = mondayOf(arizonaTodayStr(), weekOffset);
+
   useEffect(() => { loadAll(); }, []);
+
+  useEffect(() => { loadPayments(weekStart); }, [weekStart]);
+
+  async function loadPayments(startDate: string) {
+    setPaymentsLoading(true);
+    try {
+      const res = await fetch(`/api/staff/payments?week_start=${startDate}`, { cache: 'no-store' });
+      setPayments(res.ok ? await res.json() : null);
+    } catch {
+      setPayments(null);
+    } finally {
+      setPaymentsLoading(false);
+    }
+  }
 
   async function loadAll() {
     setLoading(true);
@@ -213,6 +306,86 @@ export default function StaffPage() {
           ))}
         </Box>
       )}
+
+      {/* Coach Payments */}
+      <Box sx={{ mt: 5 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>Coach Payments</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Button size="small" onClick={() => setWeekOffset((w) => w - 1)}>◀ Prev</Button>
+            <Button size="small" onClick={() => setWeekOffset(0)} disabled={weekOffset === 0}>This week</Button>
+            <Button size="small" onClick={() => setWeekOffset((w) => w + 1)}>Next ▶</Button>
+          </Box>
+        </Box>
+
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Week of {formatWeekRange(weekStart)} · coaches earn 50% of each session&apos;s value
+        </Typography>
+
+        {paymentsLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+        ) : !payments || payments.coaches.length === 0 ? (
+          <Card variant="outlined">
+            <CardContent sx={{ textAlign: 'center', py: 5 }}>
+              <Typography color="text.secondary">No sessions scheduled this week.</Typography>
+            </CardContent>
+          </Card>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {payments.grand_total_value > 0 && (
+              <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
+                <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5 }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Total this week</Typography>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="body2" color="text.secondary">Session value {money(payments.grand_total_value)}</Typography>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Coaches due {money(payments.grand_total_payout)}</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            )}
+
+            {payments.coaches.map((coach) => {
+              const unassigned = coach.coach_id == null;
+              return (
+                <Card key={coach.coach_id ?? 'unassigned'} variant="outlined">
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 600, color: unassigned ? 'warning.main' : 'text.primary' }}>
+                        {unassigned ? '⚠ No coach assigned' : coach.coach_name}
+                        <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                          · {coach.sessions.length} session{coach.sessions.length === 1 ? '' : 's'}
+                        </Typography>
+                      </Typography>
+                      {!unassigned && (
+                        <Box sx={{ textAlign: 'right' }}>
+                          <Typography variant="body2" color="text.secondary">Value {money(coach.total_value)}</Typography>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'success.main' }}>
+                            Due {money(coach.coach_payout)}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                    <Divider sx={{ my: 1 }} />
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      {coach.sessions.map((s) => (
+                        <Box key={`${s.kind}-${s.id}`} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', minWidth: 0 }}>
+                            <Typography variant="body2" component="span">
+                              {formatSessionWhen(s.session_date)} — {s.player_names.length > 0 ? s.player_names.join(', ') : s.parent_name}
+                            </Typography>
+                            <Chip label={KIND_LABELS[s.kind]} size="small" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
+                          </Box>
+                          <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }} color="text.secondary">{money(s.value)}</Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Box>
+        )}
+      </Box>
 
       {/* Create/Edit dialog */}
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>

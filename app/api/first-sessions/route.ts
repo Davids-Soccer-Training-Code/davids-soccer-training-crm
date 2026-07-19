@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
       deposit_paid,
       deposit_amount,
       notes,
+      coach_id,
     } = body;
 
     if (!parent_id || !session_date) {
@@ -91,8 +92,8 @@ export async function POST(request: NextRequest) {
 
     const result = await query(
       `INSERT INTO crm_first_sessions
-         (parent_id, title, session_date, session_end_date, location, price, deposit_paid, deposit_amount, notes, guest_emails, send_email_updates)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         (parent_id, title, session_date, session_end_date, location, price, deposit_paid, deposit_amount, notes, guest_emails, send_email_updates, coach_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING *`,
       [
         parent_id,
@@ -106,6 +107,7 @@ export async function POST(request: NextRequest) {
         notes || null,
         guestEmails,
         sendEmailUpdates,
+        coach_id != null && coach_id !== '' ? Number(coach_id) : null,
       ]
     );
 

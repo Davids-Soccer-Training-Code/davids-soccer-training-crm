@@ -32,8 +32,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const playersResult = await query('SELECT * FROM crm_players WHERE parent_id = $1 ORDER BY created_at', [id]);
-    const firstSessionResult = await query('SELECT * FROM crm_first_sessions WHERE parent_id = $1 ORDER BY session_date DESC', [id]);
-    const sessionsResult = await query('SELECT * FROM crm_sessions WHERE parent_id = $1 ORDER BY session_date DESC', [id]);
+    const firstSessionResult = await query(
+      `SELECT fs.*, st.name AS coach_name
+         FROM crm_first_sessions fs
+         LEFT JOIN crm_staff st ON st.id = fs.coach_id
+        WHERE fs.parent_id = $1 ORDER BY fs.session_date DESC`,
+      [id]
+    );
+    const sessionsResult = await query(
+      `SELECT s.*, st.name AS coach_name
+         FROM crm_sessions s
+         LEFT JOIN crm_staff st ON st.id = s.coach_id
+        WHERE s.parent_id = $1 ORDER BY s.session_date DESC`,
+      [id]
+    );
     const packagesResult = await query(
       `SELECT
          pkg.id,

@@ -93,8 +93,11 @@ export default function ContactDetail({ id }: { id: string }) {
     deposit_paid: false,
     deposit_amount: '',
     notes: '',
+    coach_id: '',
   });
   const [bookingFirstSession, setBookingFirstSession] = useState(false);
+  const [staff, setStaff] = useState<{ id: number; name: string }[]>([]);
+  const [savingCoachFor, setSavingCoachFor] = useState<number | null>(null);
 
   const fetchParent = useCallback(async () => {
     const res = await fetch(`/api/parents/${id}`);
@@ -107,6 +110,13 @@ export default function ContactDetail({ id }: { id: string }) {
   useEffect(() => {
     fetchParent();
   }, [fetchParent]);
+
+  useEffect(() => {
+    fetch('/api/staff')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setStaff(Array.isArray(data) ? data.map((s: { id: number; name: string }) => ({ id: s.id, name: s.name })) : []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!parent?.email) return;
@@ -252,6 +262,7 @@ export default function ContactDetail({ id }: { id: string }) {
           deposit_paid: firstSessionForm.deposit_paid,
           deposit_amount: firstSessionForm.deposit_amount ? parseFloat(firstSessionForm.deposit_amount) : null,
           notes: firstSessionForm.notes.trim() || null,
+          coach_id: firstSessionForm.coach_id ? parseInt(firstSessionForm.coach_id) : null,
         }),
       });
       setFirstSessionForm({
@@ -266,12 +277,29 @@ export default function ContactDetail({ id }: { id: string }) {
         deposit_paid: false,
         deposit_amount: '',
         notes: '',
+        coach_id: '',
       });
       fetchParent();
     } catch (error) {
       console.error('Error booking first session:', error);
     } finally {
       setBookingFirstSession(false);
+    }
+  };
+
+  const updateFirstSessionCoach = async (firstSessionId: number, coachId: string) => {
+    setSavingCoachFor(firstSessionId);
+    try {
+      await fetch(`/api/first-sessions/${firstSessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coach_id: coachId ? parseInt(coachId) : null }),
+      });
+      await fetchParent();
+    } catch (error) {
+      console.error('Error updating first session coach:', error);
+    } finally {
+      setSavingCoachFor(null);
     }
   };
 
@@ -555,6 +583,19 @@ export default function ContactDetail({ id }: { id: string }) {
                 </TextField>
               )}
               <TextField
+                label="Coach"
+                select
+                size="small"
+                fullWidth
+                value={firstSessionForm.coach_id}
+                onChange={(e) => setFirstSessionForm({ ...firstSessionForm, coach_id: e.target.value })}
+              >
+                <MenuItem value="">— None —</MenuItem>
+                {staff.map((s) => (
+                  <MenuItem key={s.id} value={String(s.id)}>{s.name}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
                 label="Price ($)"
                 type="number"
                 size="small"
@@ -714,6 +755,23 @@ export default function ContactDetail({ id }: { id: string }) {
                 {formatArizonaDateTime(parent.first_session.session_date)} — {parent.first_session.location}
                 {parent.first_session.price && ` — $${parent.first_session.price}`}
               </Typography>
+              <TextField
+                label="Coach"
+                select
+                size="small"
+                fullWidth
+                sx={{ mt: 1.5, maxWidth: 260 }}
+                value={parent.first_session.coach_id != null ? String(parent.first_session.coach_id) : ''}
+                onChange={(e) => updateFirstSessionCoach(parent.first_session!.id, e.target.value)}
+                disabled={savingCoachFor === parent.first_session.id}
+                error={parent.first_session.coach_id == null}
+                helperText={parent.first_session.coach_id == null ? 'No coach assigned' : undefined}
+              >
+                <MenuItem value="">— None —</MenuItem>
+                {staff.map((s) => (
+                  <MenuItem key={s.id} value={String(s.id)}>{s.name}</MenuItem>
+                ))}
+              </TextField>
             </Box>
           )}
           {parent.sessions && parent.sessions.length > 0 ? (

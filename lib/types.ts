@@ -82,6 +82,8 @@ export interface FirstSession {
   was_paid: boolean;
   payment_method: PaymentMethod | null;
   notes: string | null;
+  coach_id: number | null;
+  coach_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -104,6 +106,8 @@ export interface Session {
   guest_emails: string[] | null;
   send_email_updates: boolean;
   notes: string | null;
+  coach_id: number | null;
+  coach_name?: string | null;
   created_at: string;
   updated_at: string;
 }

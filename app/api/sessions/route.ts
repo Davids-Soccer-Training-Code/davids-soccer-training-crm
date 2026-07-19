@@ -12,6 +12,7 @@ import {
   parseGuestEmails,
 } from '@/lib/session-calendar-fields';
 import { ensureStaffTables } from '@/app/api/staff/route';
+import { notifyCoachOfAssignment } from '@/lib/coach-notifications';
 import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -134,6 +135,11 @@ export async function POST(request: NextRequest) {
           [session.id, playerId]
         );
       }
+    }
+
+    // Text the assigned coach that they have a new session (best-effort).
+    if (coach_id) {
+      await notifyCoachOfAssignment('session', session.id, Number(coach_id));
     }
 
     // Create 48h, 24h, 6h reminders (use the UTC date)

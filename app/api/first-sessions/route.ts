@@ -1,6 +1,7 @@
 import { query } from '@/lib/db';
 import { jsonResponse, errorResponse } from '@/lib/api-helpers';
 import { createSessionReminders } from '@/lib/reminders';
+import { notifyCoachOfAssignment } from '@/lib/coach-notifications';
 import { parseDatetimeLocalAsArizona } from '@/lib/timezone';
 import { syncFirstSessionToGoogleCalendarsSafe } from '@/lib/google-calendar';
 import {
@@ -121,6 +122,11 @@ export async function POST(request: NextRequest) {
           [session.id, playerId]
         );
       }
+    }
+
+    // Text the assigned coach that they have a new first session (best-effort).
+    if (coach_id) {
+      await notifyCoachOfAssignment('first', session.id, Number(coach_id));
     }
 
     // Update parent to be a customer and set call_outcome to session_booked

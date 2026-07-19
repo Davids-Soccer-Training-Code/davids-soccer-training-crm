@@ -15,6 +15,7 @@ import {
   parseGuestEmails,
 } from '@/lib/session-calendar-fields';
 import { ensureStaffTables } from '@/app/api/staff/route';
+import { notifyCoachOfAssignment } from '@/lib/coach-notifications';
 import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -44,7 +45,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       Object.prototype.hasOwnProperty.call(body, 'session_end_date');
 
     const existingResult = await query(
-      `SELECT s.id, s.session_date, s.session_end_date, s.guest_emails, p.email as parent_email
+      `SELECT s.id, s.session_date, s.session_end_date, s.guest_emails, s.coach_id, p.email as parent_email
        FROM crm_sessions s
        JOIN crm_parents p ON p.id = s.parent_id
        WHERE s.id = $1
@@ -56,6 +57,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       session_date: string;
       session_end_date: string | null;
       guest_emails: string[] | null;
+      coach_id: number | null;
       parent_email: string | null;
     };
 
@@ -152,6 +154,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (result.rows.length === 0) return errorResponse('Session not found', 404);
 
     const session = result.rows[0];
+
+    // If this edit assigned a new coach, text them (best-effort). Only fires
+    // when the coach actually changed to a non-null coach, so unrelated edits
+    // don't re-notify.
+    if (session.coach_id != null && session.coach_id !== existing.coach_id) {
+      await notifyCoachOfAssignment('session', session.id, session.coach_id);
+    }
+
     if (
       shouldRefreshSessionReminders &&
       session.status !== 'completed' &&

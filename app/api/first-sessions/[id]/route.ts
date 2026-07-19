@@ -1,6 +1,7 @@
 import { query } from '@/lib/db';
 import { jsonResponse, errorResponse } from '@/lib/api-helpers';
 import { createSessionReminders } from '@/lib/reminders';
+import { notifyCoachOfAssignment } from '@/lib/coach-notifications';
 import { parseDatetimeLocalAsArizona } from '@/lib/timezone';
 import {
   removeFirstSessionFromGoogleCalendarsSafe,
@@ -44,7 +45,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       Object.prototype.hasOwnProperty.call(body, 'session_end_date');
 
     const existingResult = await query(
-      `SELECT fs.id, fs.session_date, fs.session_end_date, fs.guest_emails, p.email as parent_email
+      `SELECT fs.id, fs.session_date, fs.session_end_date, fs.guest_emails, fs.coach_id, p.email as parent_email
        FROM crm_first_sessions fs
        JOIN crm_parents p ON p.id = fs.parent_id
        WHERE fs.id = $1
@@ -56,6 +57,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       session_date: string;
       session_end_date: string | null;
       guest_emails: string[] | null;
+      coach_id: number | null;
       parent_email: string | null;
     };
 
@@ -153,6 +155,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (result.rows.length === 0) return errorResponse('First session not found', 404);
 
     const session = result.rows[0];
+
+    // If this edit assigned a new coach, text them (best-effort). Only fires
+    // when the coach actually changed to a non-null coach.
+    if (session.coach_id != null && session.coach_id !== existing.coach_id) {
+      await notifyCoachOfAssignment('first', session.id, session.coach_id);
+    }
+
     if (
       shouldRefreshSessionReminders &&
       session.status !== 'completed' &&

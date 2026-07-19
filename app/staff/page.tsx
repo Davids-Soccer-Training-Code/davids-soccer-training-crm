@@ -17,6 +17,8 @@ import Alert from '@mui/material/Alert';
 import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
 import CircularProgress from '@mui/material/CircularProgress';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -37,6 +39,7 @@ interface Staff {
   description: string | null;
   preferred_days: string | null;
   preferred_times: string | null;
+  is_owner: boolean;
   players: AssignedPlayer[];
 }
 
@@ -46,13 +49,13 @@ type StaffForm = {
   name: string; email: string; phone: string; role: string;
   preferred_location: string; player_ages: string; player_notes: string;
   description: string; preferred_days: string; preferred_times: string;
-  player_ids: number[];
+  is_owner: boolean; player_ids: number[];
 };
 
 const EMPTY_FORM: StaffForm = {
   name: '', email: '', phone: '', role: '', preferred_location: '',
   player_ages: '', player_notes: '', description: '', preferred_days: '',
-  preferred_times: '', player_ids: [],
+  preferred_times: '', is_owner: false, player_ids: [],
 };
 
 interface PaymentSession {
@@ -68,6 +71,7 @@ interface PaymentSession {
 interface CoachPayments {
   coach_id: number | null;
   coach_name: string | null;
+  is_owner: boolean;
   sessions: PaymentSession[];
   total_value: number;
   coach_payout: number;
@@ -78,7 +82,8 @@ interface PaymentsResponse {
   week_end: string;
   payout_rate: number;
   grand_total_value: number;
-  grand_total_payout: number;
+  owed_to_coaches: number;
+  owner_take: number;
   coaches: CoachPayments[];
 }
 
@@ -199,6 +204,7 @@ export default function StaffPage() {
       preferred_location: s.preferred_location ?? '', player_ages: s.player_ages ?? '',
       player_notes: s.player_notes ?? '', description: s.description ?? '',
       preferred_days: s.preferred_days ?? '', preferred_times: s.preferred_times ?? '',
+      is_owner: s.is_owner ?? false,
       player_ids: s.players.map((p) => p.id),
     });
     setDialogOpen(true);
@@ -320,7 +326,7 @@ export default function StaffPage() {
         </Box>
 
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Week of {formatWeekRange(weekStart)} · coaches earn 50% of each session&apos;s value
+          Week of {formatWeekRange(weekStart)} · non-owner coaches earn 50% of each session&apos;s value; the owner keeps the rest
         </Typography>
 
         {paymentsLoading ? (
@@ -335,11 +341,16 @@ export default function StaffPage() {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             {payments.grand_total_value > 0 && (
               <Card variant="outlined" sx={{ bgcolor: 'action.hover' }}>
-                <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Total this week</Typography>
-                  <Box sx={{ textAlign: 'right' }}>
+                <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1.5, gap: 2, flexWrap: 'wrap' }}>
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Total this week</Typography>
                     <Typography variant="body2" color="text.secondary">Session value {money(payments.grand_total_value)}</Typography>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Coaches due {money(payments.grand_total_payout)}</Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'success.main' }}>
+                      Owed to coaches {money(payments.owed_to_coaches)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">Owner keeps {money(payments.owner_take)}</Typography>
                   </Box>
                 </CardContent>
               </Card>
@@ -351,18 +362,27 @@ export default function StaffPage() {
                 <Card key={coach.coach_id ?? 'unassigned'} variant="outlined">
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}>
-                      <Typography variant="subtitle1" sx={{ fontWeight: 600, color: unassigned ? 'warning.main' : 'text.primary' }}>
-                        {unassigned ? '⚠ No coach assigned' : coach.coach_name}
-                        <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
-                          · {coach.sessions.length} session{coach.sessions.length === 1 ? '' : 's'}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600, color: unassigned ? 'warning.main' : 'text.primary' }}>
+                          {unassigned ? '⚠ No coach assigned' : coach.coach_name}
+                          <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                            · {coach.sessions.length} session{coach.sessions.length === 1 ? '' : 's'}
+                          </Typography>
                         </Typography>
-                      </Typography>
+                        {coach.is_owner && (
+                          <Chip label="Owner" size="small" color="primary" variant="outlined" sx={{ height: 20 }} />
+                        )}
+                      </Box>
                       {!unassigned && (
                         <Box sx={{ textAlign: 'right' }}>
                           <Typography variant="body2" color="text.secondary">Value {money(coach.total_value)}</Typography>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'success.main' }}>
-                            Due {money(coach.coach_payout)}
-                          </Typography>
+                          {coach.is_owner ? (
+                            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>Keeps 100%</Typography>
+                          ) : (
+                            <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'success.main' }}>
+                              Due {money(coach.coach_payout)}
+                            </Typography>
+                          )}
                         </Box>
                       )}
                     </Box>
@@ -441,6 +461,12 @@ export default function StaffPage() {
 
             <TextField label="Player Notes" fullWidth value={form.player_notes} onChange={(e) => set('player_notes', e.target.value)} placeholder="Could be: Gabriel" />
             <TextField label="Description / Bio" fullWidth multiline rows={4} value={form.description} onChange={(e) => set('description', e.target.value)} />
+
+            <Divider />
+            <FormControlLabel
+              control={<Switch checked={form.is_owner} onChange={(e) => set('is_owner', e.target.checked)} />}
+              label="Owner — keeps 100% of their sessions (no 50% payout split)"
+            />
           </Box>
         </DialogContent>
         <DialogActions>

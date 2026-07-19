@@ -6,7 +6,7 @@ import { ensureStaffTables } from '../route';
 export const dynamic = 'force-dynamic';
 
 const STAFF_COLUMNS =
-  'id, name, email, phone, role, preferred_location, player_ages, player_notes, description, preferred_days, preferred_times, created_at, updated_at';
+  'id, name, email, phone, role, preferred_location, player_ages, player_notes, description, preferred_days, preferred_times, is_owner, created_at, updated_at';
 
 const EDITABLE_FIELDS = [
   'name', 'email', 'phone', 'role', 'preferred_location',
@@ -79,6 +79,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         values.push(typeof body[field] === 'string' ? (body[field] as string).trim() || null : null);
         setClauses.push(`${field} = $${values.length}`);
       }
+    }
+    if ('is_owner' in body) {
+      values.push(body.is_owner === true);
+      setClauses.push(`is_owner = $${values.length}`);
     }
     if (setClauses.length > 0) {
       values.push(id);

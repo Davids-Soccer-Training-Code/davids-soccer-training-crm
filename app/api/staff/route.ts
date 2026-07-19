@@ -38,6 +38,11 @@ export async function ensureStaffTables(): Promise<void> {
     await query(
       `ALTER TABLE crm_packages ADD COLUMN IF NOT EXISTS coach_id INTEGER REFERENCES crm_staff(id) ON DELETE SET NULL`
     );
+    // Owner coaches keep 100% of their sessions (no payout split); every other
+    // coach is paid 50% and the remainder is the owner's take.
+    await query(
+      `ALTER TABLE crm_staff ADD COLUMN IF NOT EXISTS is_owner BOOLEAN DEFAULT false`
+    );
   })().catch((error) => {
     ensureStaffTablesPromise = null;
     throw error;
@@ -46,7 +51,7 @@ export async function ensureStaffTables(): Promise<void> {
 }
 
 const STAFF_COLUMNS =
-  'id, name, email, phone, role, preferred_location, player_ages, player_notes, description, preferred_days, preferred_times, created_at, updated_at';
+  'id, name, email, phone, role, preferred_location, player_ages, player_notes, description, preferred_days, preferred_times, is_owner, created_at, updated_at';
 
 export async function GET() {
   try {
@@ -80,7 +85,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       name, email, phone, role, preferred_location, player_ages,
-      player_notes, description, preferred_days, preferred_times, player_ids,
+      player_notes, description, preferred_days, preferred_times, is_owner, player_ids,
     } = body as Record<string, unknown> & { player_ids?: number[] };
 
     if (typeof name !== 'string' || !name.trim()) {
@@ -90,8 +95,8 @@ export async function POST(request: NextRequest) {
     await client.query('BEGIN');
     const inserted = await client.query(
       `INSERT INTO crm_staff
-        (name, email, phone, role, preferred_location, player_ages, player_notes, description, preferred_days, preferred_times)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        (name, email, phone, role, preferred_location, player_ages, player_notes, description, preferred_days, preferred_times, is_owner)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING ${STAFF_COLUMNS}`,
       [
         name.trim(),
@@ -104,6 +109,7 @@ export async function POST(request: NextRequest) {
         (description as string)?.trim() || null,
         (preferred_days as string)?.trim() || null,
         (preferred_times as string)?.trim() || null,
+        is_owner === true,
       ]
     );
     const staff = inserted.rows[0];

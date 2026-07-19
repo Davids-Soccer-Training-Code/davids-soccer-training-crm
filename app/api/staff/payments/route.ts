@@ -27,6 +27,7 @@ interface WeekSession {
 interface CoachGroup {
   coach_id: number | null;
   coach_name: string | null;
+  is_owner: boolean;
   sessions: WeekSession[];
   total_value: number;
   coach_payout: number;
@@ -87,6 +88,7 @@ export async function GET(request: NextRequest) {
          pc.coach_id AS player_coach_id,
          COALESCE(s.coach_id, pkg.coach_id, pc.coach_id) AS coach_id,
          est.name AS coach_name,
+         COALESCE(est.is_owner, false) AS coach_is_owner,
          p.name AS parent_name,
          (s.package_id IS NOT NULL) AS is_package,
          CASE
@@ -105,7 +107,7 @@ export async function GET(request: NextRequest) {
        WHERE s.session_date >= $1 AND s.session_date < $2
          AND COALESCE(s.cancelled, false) = false
          AND COALESCE(s.status, '') <> 'cancelled'
-       GROUP BY s.id, s.coach_id, pkg.coach_id, pc.coach_id, est.name, p.name, pkg.price, pkg.total_sessions
+       GROUP BY s.id, s.coach_id, pkg.coach_id, pc.coach_id, est.name, est.is_owner, p.name, pkg.price, pkg.total_sessions
        ORDER BY s.session_date`,
       [startIso, endIso]
     );
@@ -117,6 +119,7 @@ export async function GET(request: NextRequest) {
          fs.session_date,
          fs.coach_id,
          st.name AS coach_name,
+         COALESCE(st.is_owner, false) AS coach_is_owner,
          p.name AS parent_name,
          fs.price AS value
        FROM crm_first_sessions fs
@@ -134,6 +137,7 @@ export async function GET(request: NextRequest) {
     const addSession = (
       coachId: number | null,
       coachName: string | null,
+      isOwner: boolean,
       session: WeekSession
     ) => {
       const key = coachId == null ? 'unassigned' : String(coachId);
@@ -142,6 +146,7 @@ export async function GET(request: NextRequest) {
         group = {
           coach_id: coachId,
           coach_name: coachName,
+          is_owner: isOwner,
           sessions: [],
           total_value: 0,
           coach_payout: 0,
@@ -150,7 +155,6 @@ export async function GET(request: NextRequest) {
       }
       group.sessions.push(session);
       group.total_value += session.value;
-      group.coach_payout = group.total_value * COACH_PAYOUT_RATE;
     };
 
     for (const row of regularResult.rows) {
@@ -162,7 +166,7 @@ export async function GET(request: NextRequest) {
         else if (row.package_coach_id != null) coachSource = 'package';
         else coachSource = 'player';
       }
-      addSession(row.coach_id, row.coach_name, {
+      addSession(row.coach_id, row.coach_name, row.coach_is_owner === true, {
         id: row.id,
         kind: row.is_package ? 'package' : 'session',
         session_date: row.session_date,
@@ -175,7 +179,7 @@ export async function GET(request: NextRequest) {
 
     for (const row of firstResult.rows) {
       const value = row.value == null ? 0 : Number(row.value);
-      addSession(row.coach_id, row.coach_name, {
+      addSession(row.coach_id, row.coach_name, row.coach_is_owner === true, {
         id: row.id,
         kind: 'first',
         session_date: row.session_date,
@@ -186,11 +190,16 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Sort each coach's sessions by date, and order coaches by name with the
-    // unassigned bucket last.
+    // Payout rule: the owner takes no cut and keeps 100% of their own sessions;
+    // every other coach is paid 50% of their session value. "Unassigned"
+    // sessions aren't owed to anyone yet, so they carry no payout.
     const coaches = Array.from(groups.values())
       .map((group) => ({
         ...group,
+        coach_payout:
+          group.coach_id == null || group.is_owner
+            ? 0
+            : group.total_value * COACH_PAYOUT_RATE,
         sessions: group.sessions.sort(
           (a, b) => new Date(a.session_date).getTime() - new Date(b.session_date).getTime()
         ),
@@ -202,14 +211,19 @@ export async function GET(request: NextRequest) {
       });
 
     const grandTotalValue = coaches.reduce((sum, c) => sum + c.total_value, 0);
-    const grandTotalPayout = grandTotalValue * COACH_PAYOUT_RATE;
+    // What must actually be paid out to the (non-owner) coaches.
+    const owedToCoaches = coaches.reduce((sum, c) => sum + c.coach_payout, 0);
+    // The owner keeps everything that isn't owed to another coach: their own
+    // sessions at 100% plus the other 50% of every other coach's sessions.
+    const ownerTake = grandTotalValue - owedToCoaches;
 
     return jsonResponse({
       week_start: startIso,
       week_end: endIso,
       payout_rate: COACH_PAYOUT_RATE,
       grand_total_value: grandTotalValue,
-      grand_total_payout: grandTotalPayout,
+      owed_to_coaches: owedToCoaches,
+      owner_take: ownerTake,
       coaches,
     });
   } catch (error) {

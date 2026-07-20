@@ -31,11 +31,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         pkg.is_active,
         pkg.created_at,
         pkg.updated_at,
+        pkg.coach_id,
+        st.name as coach_name,
         p.name as parent_name,
         p.email as parent_email,
         (SELECT ARRAY_AGG(name ORDER BY created_at) FROM crm_players WHERE parent_id = p.id) as player_names
       FROM crm_packages pkg
       JOIN crm_parents p ON p.id = pkg.parent_id
+      LEFT JOIN crm_staff st ON st.id = pkg.coach_id
       WHERE pkg.id = $1
     `, [id]);
     if (pkgResult.rows.length === 0) return errorResponse('Package not found', 404);

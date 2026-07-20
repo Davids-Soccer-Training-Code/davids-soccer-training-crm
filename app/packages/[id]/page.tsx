@@ -8,6 +8,7 @@ import CardContent from '@mui/material/CardContent';
 import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
 import Button from '@mui/material/Button';
+import BadgeIcon from '@mui/icons-material/Badge';
 import LinearProgress from '@mui/material/LinearProgress';
 import TextField from '@mui/material/TextField';
 import Divider from '@mui/material/Divider';
@@ -88,6 +89,8 @@ interface PackageDetail {
   parent_email?: string | null;
   player_names: string[] | null;
   package_type: string;
+  coach_id: number | null;
+  coach_name: string | null;
   total_sessions: number;
   sessions_completed: number;
   price: number | string | null;
@@ -572,7 +575,13 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
             {packageTypeLabels[pkg.package_type] || pkg.package_type}
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Chip
+            icon={<BadgeIcon />}
+            label={pkg.coach_name ? `Coach: ${pkg.coach_name}` : 'No coach assigned'}
+            color={pkg.coach_name ? 'primary' : 'warning'}
+            variant={pkg.coach_name ? 'filled' : 'outlined'}
+          />
           <Chip label={pkg.is_active ? 'Active' : 'Completed'} color={pkg.is_active ? 'success' : 'default'} />
           <Button size="small" variant="outlined" onClick={toggleActive}>
             {pkg.is_active ? 'Mark Complete' : 'Reactivate'}

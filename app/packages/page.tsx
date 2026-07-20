@@ -21,6 +21,7 @@ import MenuItem from '@mui/material/MenuItem';
 import LinearProgress from '@mui/material/LinearProgress';
 import IconButton from '@mui/material/IconButton';
 import AddIcon from '@mui/icons-material/Add';
+import BadgeIcon from '@mui/icons-material/Badge';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { Parent } from '@/lib/types';
@@ -201,11 +202,14 @@ export default function PackagesPage() {
                 <Typography variant="body2" color="text.secondary">
                   {packageTypeLabels[pkg.package_type] || pkg.package_type}
                 </Typography>
-                {pkg.coach_name && (
-                  <Typography variant="body2" color="text.secondary">
-                    Coach: {pkg.coach_name}
-                  </Typography>
-                )}
+                <Chip
+                  icon={<BadgeIcon />}
+                  label={pkg.coach_name ? `Coach: ${pkg.coach_name}` : 'No coach assigned'}
+                  color={pkg.coach_name ? 'primary' : 'warning'}
+                  variant={pkg.coach_name ? 'filled' : 'outlined'}
+                  size="small"
+                  sx={{ mt: 0.5 }}
+                />
               </Box>
               <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
                 <Chip label={pkg.is_active ? 'Still Doing' : 'Completed'} color={pkg.is_active ? 'success' : 'default'} size="small" />

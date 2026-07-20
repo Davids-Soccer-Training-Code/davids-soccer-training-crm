@@ -97,6 +97,31 @@ export async function POST(request: NextRequest) {
     }
     const guestEmails = ensureParentEmailInGuestList(parsedGuestEmails, parentEmail);
 
+    // Resolve the coach: an explicit coach_id wins; otherwise fall back to the
+    // package's coach, then the coach the selected players are assigned to
+    // (modal, tie-break by lowest staff id). This mirrors the inference used by
+    // the payment tracker, so package-scheduled sessions get a real coach on
+    // the row (and that coach gets texted) instead of coming through coach-less.
+    let resolvedCoachId: number | null = coach_id ? Number(coach_id) : null;
+    if (resolvedCoachId == null && package_id) {
+      const pkgCoach = await query(
+        `SELECT coach_id FROM crm_packages WHERE id = $1 LIMIT 1`,
+        [package_id]
+      );
+      if (pkgCoach.rows[0]?.coach_id != null) resolvedCoachId = Number(pkgCoach.rows[0].coach_id);
+    }
+    if (resolvedCoachId == null && Array.isArray(player_ids) && player_ids.length > 0) {
+      const playerCoach = await query(
+        `SELECT coach_id FROM crm_players
+         WHERE id = ANY($1::int[]) AND coach_id IS NOT NULL
+         GROUP BY coach_id
+         ORDER BY COUNT(*) DESC, coach_id ASC
+         LIMIT 1`,
+        [player_ids]
+      );
+      if (playerCoach.rows[0]?.coach_id != null) resolvedCoachId = Number(playerCoach.rows[0].coach_id);
+    }
+
     const sessionDateUTC = parseDatetimeLocalAsArizona(session_date);
     const sessionEndDateUTC = session_end_date
       ? parseDatetimeLocalAsArizona(session_end_date)
@@ -121,7 +146,7 @@ export async function POST(request: NextRequest) {
         notes || null,
         guestEmails,
         sendEmailUpdates,
-        coach_id || null,
+        resolvedCoachId,
       ]
     );
 
@@ -138,8 +163,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Text the assigned coach that they have a new session (best-effort).
-    if (coach_id) {
-      await notifyCoachOfAssignment('session', session.id, Number(coach_id));
+    if (resolvedCoachId != null) {
+      await notifyCoachOfAssignment('session', session.id, resolvedCoachId);
     }
 
     // Create 48h, 24h, 6h reminders (use the UTC date)

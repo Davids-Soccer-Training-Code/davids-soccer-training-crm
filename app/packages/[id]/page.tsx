@@ -106,6 +106,8 @@ interface PackageDetail {
     status?: string | null;
     player_names: string[] | null;
     player_ids: number[] | null;
+    coach_id: number | null;
+    coach_name: string | null;
     location: string | null;
     guest_emails: string[] | null;
     send_email_updates: boolean | null;
@@ -150,6 +152,7 @@ interface EditFormState {
   sendEmailUpdates: boolean;
   notes: string;
   playerIds: number[];
+  coachId: string;
 }
 
 export const dynamic = 'force-dynamic';
@@ -190,8 +193,10 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
     sendEmailUpdates: false,
     notes: '',
     playerIds: [],
+    coachId: '',
   });
   const [editSaving, setEditSaving] = useState(false);
+  const [staff, setStaff] = useState<{ id: number; name: string }[]>([]);
   const [deleteSession, setDeleteSession] = useState<PackageDetail['sessions'][number] | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deletePackageOpen, setDeletePackageOpen] = useState(false);
@@ -208,6 +213,13 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
   }, [id]);
 
   useEffect(() => { fetchPackage(); }, [fetchPackage]);
+
+  useEffect(() => {
+    fetch('/api/staff')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setStaff(Array.isArray(data) ? data.map((s: { id: number; name: string }) => ({ id: s.id, name: s.name })) : []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!pkg) return;
@@ -425,6 +437,7 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
       sendEmailUpdates: session.send_email_updates === true,
       notes: session.notes || '',
       playerIds: session.player_ids || [],
+      coachId: session.coach_id != null ? String(session.coach_id) : '',
     });
   };
 
@@ -448,6 +461,7 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
             .filter(Boolean),
           send_email_updates: editForm.sendEmailUpdates,
           notes: editForm.notes.trim() || null,
+          coach_id: editForm.coachId ? parseInt(editForm.coachId) : null,
         }),
       });
 
@@ -758,6 +772,14 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
                         {s.player_names.join(', ')}
                       </Typography>
                     )}
+                    <Chip
+                      icon={<BadgeIcon />}
+                      label={s.coach_name ? `Coach: ${s.coach_name}` : 'No coach assigned'}
+                      color={s.coach_name ? 'primary' : 'warning'}
+                      variant={s.coach_name ? 'filled' : 'outlined'}
+                      size="small"
+                      sx={{ mt: 0.5 }}
+                    />
                   </Box>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {(() => {
@@ -1041,6 +1063,23 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
                 ))}
               </TextField>
             )}
+            <TextField
+              label="Coach"
+              select
+              fullWidth
+              value={editForm.coachId}
+              onChange={(event) => setEditForm((prev) => ({ ...prev, coachId: event.target.value }))}
+              helperText={
+                editForm.coachId
+                  ? 'Changing this texts the newly assigned coach.'
+                  : 'No coach assigned — pick one to notify them.'
+              }
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {staff.map((s) => (
+                <MenuItem key={s.id} value={String(s.id)}>{s.name}</MenuItem>
+              ))}
+            </TextField>
             <TextField
               label="Notes"
               value={editForm.notes}

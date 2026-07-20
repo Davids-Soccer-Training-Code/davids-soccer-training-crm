@@ -47,13 +47,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const sessionsResult = await query(
       `SELECT
          s.*,
+         st.name as coach_name,
          ARRAY_AGG(pl.name) FILTER (WHERE pl.name IS NOT NULL) as player_names,
          ARRAY_AGG(pl.id) FILTER (WHERE pl.id IS NOT NULL) as player_ids
-       FROM crm_sessions s 
+       FROM crm_sessions s
+       LEFT JOIN crm_staff st ON st.id = s.coach_id
        LEFT JOIN crm_session_players sp ON sp.session_id = s.id
-       LEFT JOIN crm_players pl ON pl.id = sp.player_id 
-       WHERE s.package_id = $1 
-       GROUP BY s.id
+       LEFT JOIN crm_players pl ON pl.id = sp.player_id
+       WHERE s.package_id = $1
+       GROUP BY s.id, st.name
        ORDER BY s.session_date`,
       [id]
     );

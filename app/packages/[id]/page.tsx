@@ -141,6 +141,7 @@ interface ScheduleFormState {
   sendEmailUpdates: boolean;
   notes: string;
   playerIds: number[];
+  coachId: string;
 }
 
 interface EditFormState {
@@ -182,6 +183,7 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
     sendEmailUpdates: false,
     notes: '',
     playerIds: [],
+    coachId: '',
   });
   const [editingSession, setEditingSession] = useState<PackageDetail['sessions'][number] | null>(null);
   const [editForm, setEditForm] = useState<EditFormState>({
@@ -306,6 +308,7 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
           .filter(Boolean),
         send_email_updates: scheduleForm.sendEmailUpdates,
         notes: scheduleForm.notes.trim() || null,
+        coach_id: scheduleForm.coachId ? parseInt(scheduleForm.coachId) : null,
       }),
     });
 
@@ -326,6 +329,9 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
       sendEmailUpdates: false,
       notes: '',
       playerIds: defaultPlayerIds,
+      // Pre-fill with the package's coach (what the server would infer anyway)
+      // so it still auto-assigns, but stays overridable before saving.
+      coachId: pkg?.coach_id != null ? String(pkg.coach_id) : '',
     });
     setScheduleDialogOpen(true);
   };
@@ -965,6 +971,24 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
                 ))}
               </TextField>
             )}
+
+            <TextField
+              label="Coach"
+              select
+              fullWidth
+              value={scheduleForm.coachId}
+              onChange={(event) => setScheduleForm((prev) => ({ ...prev, coachId: event.target.value }))}
+              helperText={
+                scheduleForm.coachId
+                  ? "Defaults to the package's coach. They'll get a text for each session created."
+                  : "Leave empty to fall back to the package's coach."
+              }
+            >
+              <MenuItem value="">— None —</MenuItem>
+              {staff.map((s) => (
+                <MenuItem key={s.id} value={String(s.id)}>{s.name}</MenuItem>
+              ))}
+            </TextField>
 
             <TextField
               label="Notes"

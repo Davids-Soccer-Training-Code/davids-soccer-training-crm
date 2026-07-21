@@ -29,6 +29,7 @@ import SmsIcon from '@mui/icons-material/Sms';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
 import BadgeIcon from '@mui/icons-material/Badge';
+import LogoutIcon from '@mui/icons-material/Logout';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 
@@ -56,6 +57,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    window.location.href = '/login';
+  };
 
   const drawer = (
     <Box>
@@ -93,9 +99,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </ListItem>
           );
         })}
+        <ListItem disablePadding sx={{ mt: 1 }}>
+          <ListItemButton onClick={handleLogout} sx={{ mx: 1, borderRadius: 2 }}>
+            <ListItemIcon sx={{ minWidth: 40, color: 'primary.main' }}>
+              <LogoutIcon />
+            </ListItemIcon>
+            <ListItemText primary="Log out" />
+          </ListItemButton>
+        </ListItem>
       </List>
     </Box>
   );
+
+  // The login page renders standalone — no nav chrome around the lock screen.
+  if (pathname === '/login') {
+    return <>{children}</>;
+  }
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>

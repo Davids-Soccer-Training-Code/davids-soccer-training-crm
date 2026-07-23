@@ -37,6 +37,11 @@ export async function ensurePackageTypeTables(): Promise<void> {
     await query(
       `ALTER TABLE crm_packages ADD COLUMN IF NOT EXISTS sessions_per_week INTEGER`
     );
+    // Legacy CHECK constraint pinned package_type to the four built-in keys;
+    // custom types are validated in the API instead, so drop it if present.
+    await query(
+      `ALTER TABLE crm_packages DROP CONSTRAINT IF EXISTS crm_packages_package_type_check`
+    );
 
     // Seed built-ins. ON CONFLICT DO NOTHING so user edits/deactivations persist.
     for (const t of BUILTIN_PACKAGE_TYPES) {

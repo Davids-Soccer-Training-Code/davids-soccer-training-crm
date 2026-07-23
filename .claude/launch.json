@@ -19,6 +19,13 @@
       "runtimeArgs": ["next", "dev"],
       "port": 3100,
       "autoPort": true
+    },
+    {
+      "name": "Private Training App",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd /Users/davidfales/davids-private-training-app && npm run dev"],
+      "port": 3200,
+      "autoPort": true
     }
   ]
 }

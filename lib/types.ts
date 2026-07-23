@@ -7,8 +7,23 @@ export type CallOutcome = 'session_booked' | 'thinking_about_it' | 'uninterested
 // Payment methods
 export type PaymentMethod = 'zelle' | 'venmo' | 'paypal' | 'apple_cash' | 'cash';
 
-// Package types
-export type PackageType = '12_week_1x' | '12_week_2x' | '6_week_1x' | '6_week_2x';
+// Package types. The four built-in keys stay documented here, but a package's
+// type is a free-form key so user-defined custom types work too.
+export type BuiltinPackageType = '12_week_1x' | '12_week_2x' | '6_week_1x' | '6_week_2x';
+export type PackageType = BuiltinPackageType | (string & {});
+
+// A package type definition (built-in or custom) from crm_package_types.
+export interface PackageTypeDef {
+  id: number;
+  key: string;
+  label: string;
+  total_sessions: number;
+  sessions_per_week: number;
+  is_builtin: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 // Reminder types
 export type ReminderType =
@@ -116,7 +131,9 @@ export interface Package {
   id: number;
   parent_id: number;
   package_type: PackageType;
+  package_type_label?: string | null;
   total_sessions: number;
+  sessions_per_week: number;
   sessions_completed: number;
   price: number | null;
   start_date: string | null;

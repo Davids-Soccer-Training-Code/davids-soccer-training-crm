@@ -1,5 +1,6 @@
 import { getClient, query } from '@/lib/db';
 import { jsonResponse, errorResponse } from '@/lib/api-helpers';
+import { ensurePackageTypeTables } from '@/app/api/package-types/route';
 import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -7,12 +8,15 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    await ensurePackageTypeTables();
     const pkgResult = await query(`
       SELECT
         pkg.id,
         pkg.parent_id,
         pkg.package_type,
+        pt.label as package_type_label,
         pkg.total_sessions,
+        pkg.sessions_per_week,
         COALESCE((
           SELECT COUNT(*)
           FROM crm_sessions s
@@ -39,6 +43,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       FROM crm_packages pkg
       JOIN crm_parents p ON p.id = pkg.parent_id
       LEFT JOIN crm_staff st ON st.id = pkg.coach_id
+      LEFT JOIN crm_package_types pt ON pt.key = pkg.package_type
       WHERE pkg.id = $1
     `, [id]);
     if (pkgResult.rows.length === 0) return errorResponse('Package not found', 404);

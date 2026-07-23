@@ -37,8 +37,11 @@ const currency = new Intl.NumberFormat('en-US', {
 
 const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
 
-function getSessionsPerWeek(packageType: string): 1 | 2 {
-  return packageType.endsWith('_2x') ? 2 : 1;
+// Prefer the value stored on the package (works for custom types); fall back to
+// parsing the legacy `_2x` suffix for older rows that predate the column.
+function getSessionsPerWeek(pkg: { sessions_per_week?: number | null; package_type: string }): number {
+  if (pkg.sessions_per_week != null && pkg.sessions_per_week >= 1) return pkg.sessions_per_week;
+  return pkg.package_type.endsWith('_2x') ? 2 : 1;
 }
 
 function parseScheduleSeed(value: string): Date | null {
@@ -89,6 +92,8 @@ interface PackageDetail {
   parent_email?: string | null;
   player_names: string[] | null;
   package_type: string;
+  package_type_label?: string | null;
+  sessions_per_week?: number | null;
   coach_id: number | null;
   coach_name: string | null;
   total_sessions: number;
@@ -363,7 +368,7 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
           return;
         }
       } else {
-        const expectedSlots = getSessionsPerWeek(pkg.package_type);
+        const expectedSlots = getSessionsPerWeek(pkg);
         const slotInputs = scheduleForm.autoSlots.filter((value) => value.trim().length > 0);
         if (slotInputs.length < expectedSlots) {
           setScheduleError(`Pick ${expectedSlots} weekly slot${expectedSlots === 1 ? '' : 's'}.`);
@@ -572,7 +577,7 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
   const hasPrice = packagePrice > 0;
   const percentReceived = hasPrice ? Math.min((currentReceived / packagePrice) * 100, 100) : 0;
   const displayReceived = hasPrice ? Math.min(currentReceived, packagePrice) : currentReceived;
-  const sessionsPerWeek = getSessionsPerWeek(pkg.package_type);
+  const sessionsPerWeek = getSessionsPerWeek(pkg);
   const bookedSessions = pkg.sessions.filter((session) => {
     const status = session.status?.toLowerCase();
     return !session.cancelled && status !== 'cancelled' && status !== 'no_show';
@@ -592,7 +597,7 @@ export default function PackageDetailPage({ params }: { params: Promise<{ id: st
             )}
           </Typography>
           <Typography color="text.secondary">
-            {packageTypeLabels[pkg.package_type] || pkg.package_type}
+            {pkg.package_type_label || packageTypeLabels[pkg.package_type] || pkg.package_type}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>

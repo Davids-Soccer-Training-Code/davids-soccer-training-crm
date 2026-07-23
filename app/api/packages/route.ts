@@ -1,6 +1,7 @@
 import { query } from '@/lib/db';
 import { jsonResponse, errorResponse } from '@/lib/api-helpers';
 import { ensureStaffTables } from '@/app/api/staff/route';
+import { resolvePackageType, ensurePackageTypeTables } from '@/app/api/package-types/route';
 import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -8,12 +9,15 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     await ensureStaffTables();
+    await ensurePackageTypeTables();
     const result = await query(`
       SELECT
         pkg.id,
         pkg.parent_id,
         pkg.package_type,
+        pt.label as package_type_label,
         pkg.total_sessions,
+        pkg.sessions_per_week,
         COALESCE((
           SELECT COUNT(*)
           FROM crm_sessions s
@@ -39,6 +43,7 @@ export async function GET() {
       FROM crm_packages pkg
       JOIN crm_parents p ON p.id = pkg.parent_id
       LEFT JOIN crm_staff st ON st.id = pkg.coach_id
+      LEFT JOIN crm_package_types pt ON pt.key = pkg.package_type
       ORDER BY pkg.is_active DESC, pkg.created_at DESC
     `);
     return jsonResponse(result.rows);
@@ -58,15 +63,10 @@ export async function POST(request: NextRequest) {
       return errorResponse('Parent and package type are required', 400);
     }
 
-    const totalSessionsMap: Record<string, number> = {
-      '12_week_1x': 12,
-      '12_week_2x': 24,
-      '6_week_1x': 6,
-      '6_week_2x': 12,
-    };
-
-    const totalSessions = totalSessionsMap[package_type];
-    if (!totalSessions) return errorResponse('Invalid package type', 400);
+    const resolvedType = await resolvePackageType(package_type);
+    if (!resolvedType) return errorResponse('Invalid package type', 400);
+    const totalSessions = resolvedType.total_sessions;
+    const sessionsPerWeek = resolvedType.sessions_per_week;
 
     const parsedPrice = price == null ? null : Number(price);
     if (parsedPrice != null && !Number.isFinite(parsedPrice)) {
@@ -87,10 +87,10 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await query(
-      `INSERT INTO crm_packages (parent_id, package_type, total_sessions, price, start_date, amount_received, coach_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO crm_packages (parent_id, package_type, total_sessions, sessions_per_week, price, start_date, amount_received, coach_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [parent_id, package_type, totalSessions, parsedPrice, start_date || null, initialAmountReceived, coach_id || null]
+      [parent_id, package_type, totalSessions, sessionsPerWeek, parsedPrice, start_date || null, initialAmountReceived, coach_id || null]
     );
     const createdPackage = result.rows[0];
 

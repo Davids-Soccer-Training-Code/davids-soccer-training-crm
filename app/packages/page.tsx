@@ -23,15 +23,10 @@ import IconButton from '@mui/material/IconButton';
 import AddIcon from '@mui/icons-material/Add';
 import BadgeIcon from '@mui/icons-material/Badge';
 import DeleteIcon from '@mui/icons-material/Delete';
+import TuneIcon from '@mui/icons-material/Tune';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import type { Parent } from '@/lib/types';
-
-const packageTypeLabels: Record<string, string> = {
-  '12_week_1x': '12 Weeks - 1x/week (12 sessions)',
-  '12_week_2x': '12 Weeks - 2x/week (24 sessions)',
-  '6_week_1x': '6 Weeks - 1x/week (6 sessions)',
-  '6_week_2x': '6 Weeks - 2x/week (12 sessions)',
-};
+import type { Parent, PackageTypeDef } from '@/lib/types';
+import ManageTypesDialog from './ManageTypesDialog';
 
 const currency = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -44,6 +39,7 @@ interface PackageRow {
   parent_name: string;
   player_names: string[] | null;
   package_type: string;
+  package_type_label: string | null;
   total_sessions: number;
   sessions_completed: number;
   price: number | string | null;
@@ -76,6 +72,15 @@ export default function PackagesPage() {
   const [staff, setStaff] = useState<{ id: number; name: string }[]>([]);
   const [coachId, setCoachId] = useState('');
   const coachTouchedRef = useRef(false);
+  const [packageTypes, setPackageTypes] = useState<PackageTypeDef[]>([]);
+  const [manageOpen, setManageOpen] = useState(false);
+
+  const activePackageTypes = packageTypes.filter((t) => t.is_active);
+
+  const fetchPackageTypes = async () => {
+    const res = await fetch('/api/package-types?include_inactive=1');
+    if (res.ok) setPackageTypes(await res.json());
+  };
 
   const fetchPackages = async () => {
     setLoading(true);
@@ -88,7 +93,7 @@ export default function PackagesPage() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchPackages(); }, []);
+  useEffect(() => { fetchPackages(); fetchPackageTypes(); }, []);
 
   useEffect(() => {
     fetch('/api/staff').then((r) => r.json()).then((rows) =>
@@ -200,7 +205,7 @@ export default function PackagesPage() {
                   )}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {packageTypeLabels[pkg.package_type] || pkg.package_type}
+                  {pkg.package_type_label || pkg.package_type}
                 </Typography>
                 <Chip
                   icon={<BadgeIcon />}
@@ -255,9 +260,14 @@ export default function PackagesPage() {
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" sx={{ fontWeight: 700 }}>Packages</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
-          New Package
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" startIcon={<TuneIcon />} onClick={() => setManageOpen(true)}>
+            Manage Types
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>
+            New Package
+          </Button>
+        </Box>
       </Box>
 
       {packages.length === 0 ? (
@@ -317,9 +327,29 @@ export default function PackagesPage() {
                 </MenuItem>
               ))}
             </TextField>
-            <TextField label="Package Type *" value={packageType} onChange={(e) => setPackageType(e.target.value)} select fullWidth>
-              {Object.entries(packageTypeLabels).map(([val, label]) => (
-                <MenuItem key={val} value={val}>{label}</MenuItem>
+            <TextField
+              label="Package Type *"
+              value={packageType}
+              onChange={(e) => setPackageType(e.target.value)}
+              select
+              fullWidth
+              helperText={
+                <Box component="span" sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Box
+                    component="span"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setManageOpen(true)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setManageOpen(true); }}
+                    sx={{ cursor: 'pointer', color: 'primary.main' }}
+                  >
+                    + Manage / add custom types
+                  </Box>
+                </Box>
+              }
+            >
+              {activePackageTypes.map((t) => (
+                <MenuItem key={t.key} value={t.key}>{t.label}</MenuItem>
               ))}
             </TextField>
             <TextField
@@ -346,6 +376,13 @@ export default function PackagesPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      <ManageTypesDialog
+        open={manageOpen}
+        onClose={() => setManageOpen(false)}
+        types={packageTypes}
+        onChanged={fetchPackageTypes}
+      />
 
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Delete Package?</DialogTitle>

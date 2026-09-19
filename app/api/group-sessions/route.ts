@@ -7,6 +7,12 @@ import {
   DEFAULT_GROUP_SESSION_IMAGE_URL,
   buildDefaultGroupSessionTitle,
 } from '@/lib/group-sessions';
+import {
+  getCoachesForGroupSessions,
+  notifyGroupSessionCoaches,
+  parseCoachIds,
+  setGroupSessionCoaches,
+} from '@/lib/group-session-coaches';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,7 +103,15 @@ export async function GET() {
       ORDER BY gs.session_date DESC`
     );
 
-    return jsonResponse((result.rows as GroupSessionRow[]).map(mapGroupSession));
+    const rows = result.rows as GroupSessionRow[];
+    const coachesById = await getCoachesForGroupSessions(rows.map((row) => row.id));
+
+    return jsonResponse(
+      rows.map((row) => ({
+        ...mapGroupSession(row),
+        coaches: coachesById.get(Number(row.id)) ?? [],
+      }))
+    );
   } catch (error) {
     console.error('Error fetching group sessions:', error);
     return errorResponse('Failed to fetch group sessions');
@@ -163,15 +177,27 @@ export async function POST(request: NextRequest) {
     );
 
     const createdGroupSession = result.rows[0] as GroupSessionRow;
+    const newCoachIds = await setGroupSessionCoaches(
+      createdGroupSession.id,
+      parseCoachIds(body.coach_ids)
+    );
     await syncGroupSessionToGoogleCalendarsSafe(createdGroupSession.id, 'group session create');
+    await notifyGroupSessionCoaches(createdGroupSession.id, newCoachIds);
+    const coaches =
+      (await getCoachesForGroupSessions([createdGroupSession.id])).get(
+        Number(createdGroupSession.id)
+      ) ?? [];
 
     return jsonResponse(
-      mapGroupSession({
-        ...createdGroupSession,
-        player_count: 0,
-        prospect_count: 0,
-        total_paid_amount: 0,
-      }),
+      {
+        ...mapGroupSession({
+          ...createdGroupSession,
+          player_count: 0,
+          prospect_count: 0,
+          total_paid_amount: 0,
+        }),
+        coaches,
+      },
       201
     );
   } catch (error) {

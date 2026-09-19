@@ -4,6 +4,7 @@ import { ensureFirstSessionCalendarColumns } from '@/lib/first-session-calendar-
 import { ensureSessionCalendarColumns, parseGuestEmails } from '@/lib/session-calendar-fields';
 import type { SessionExtra } from '@/lib/session-extras';
 import { formatExtrasForDescription } from '@/lib/session-extras';
+import { ensureGroupSessionCoachTables } from '@/lib/group-session-coaches';
 
 const GOOGLE_CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar';
 const GOOGLE_CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3';
@@ -98,6 +99,9 @@ interface GroupSessionSyncRow {
   prospect_count: number;
   /** Signed-up families' contact emails, for the event's guest list. */
   attendee_emails: string[] | null;
+  coach_names: string[] | null;
+  /** Assigned coaches go on the guest list too, so it lands on their calendar. */
+  coach_emails: string[] | null;
 }
 
 interface GoogleSessionEventMapping {
@@ -494,6 +498,7 @@ async function getFirstSessionForSync(
 async function getGroupSessionForSync(
   groupSessionId: string | number
 ): Promise<GroupSessionSyncRow | null> {
+  await ensureGroupSessionCoachTables();
   const result = await query(
     `SELECT
        gs.id,
@@ -518,7 +523,13 @@ async function getGroupSessionForSync(
          ARRAY_AGG(DISTINCT ps.contact_email)
            FILTER (WHERE ps.contact_email IS NOT NULL AND ps.contact_email <> ''),
          '{}'
-       ) AS attendee_emails
+       ) AS attendee_emails,
+       (SELECT ARRAY_AGG(st.name ORDER BY st.name)
+          FROM group_session_coaches gsc JOIN crm_staff st ON st.id = gsc.staff_id
+          WHERE gsc.group_session_id = gs.id) AS coach_names,
+       (SELECT ARRAY_AGG(st.email)
+          FROM group_session_coaches gsc JOIN crm_staff st ON st.id = gsc.staff_id
+          WHERE gsc.group_session_id = gs.id AND st.email IS NOT NULL AND st.email <> '') AS coach_emails
      FROM group_sessions gs
      LEFT JOIN player_signups ps ON ps.group_session_id = gs.id
      WHERE gs.id = $1
@@ -529,6 +540,8 @@ async function getGroupSessionForSync(
   if (result.rows.length === 0) return null;
   const row = result.rows[0] as GroupSessionSyncRow;
   row.attendee_emails = Array.isArray(row.attendee_emails) ? row.attendee_emails : [];
+  row.coach_names = Array.isArray(row.coach_names) ? row.coach_names : [];
+  row.coach_emails = Array.isArray(row.coach_emails) ? row.coach_emails : [];
   return row;
 }
 
@@ -686,6 +699,10 @@ function buildGroupSessionGoogleEventPayload(groupSession: GroupSessionSyncRow):
     `Prospects: ${Number(groupSession.prospect_count ?? 0)}`,
   ];
 
+  if (groupSession.coach_names && groupSession.coach_names.length > 0) {
+    details.push(`Coaches: ${groupSession.coach_names.join(', ')}`);
+  }
+
   if (groupSession.curriculum && groupSession.curriculum.trim()) {
     details.push(`Curriculum: ${groupSession.curriculum.trim()}`);
   }
@@ -700,7 +717,10 @@ function buildGroupSessionGoogleEventPayload(groupSession: GroupSessionSyncRow):
   // syncGroupSessionEventOnCalendar). The event still lands on their calendar,
   // but Google does not email the families already on it every time a new one
   // is added -- their own signup email carries the invite instead.
-  const attendeeEmails = parseGuestEmails(groupSession.attendee_emails || []).emails;
+  const attendeeEmails = parseGuestEmails([
+    ...(groupSession.coach_emails || []),
+    ...(groupSession.attendee_emails || []),
+  ]).emails;
 
   return {
     summary:

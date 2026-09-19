@@ -14,6 +14,7 @@ import {
   sendSmsViaTwilio,
 } from "@/lib/twilio";
 import { formatInTimeZone } from "date-fns-tz";
+import { processGroupSessionReminders } from "@/lib/group-session-reminders";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -1144,6 +1145,15 @@ export async function POST(request: Request) {
       includeCustomMessagesParam === null
         ? true
         : includeCustomMessagesParam === "1";
+    const groupSessionId = parseOptionalInt(url.searchParams.get("group_session_id"));
+    // Group reminders are skipped when the run is narrowed to one private
+    // parent/session/type, so debugging those never texts group families.
+    const includeGroupSessions =
+      url.searchParams.get("include_group_sessions") !== "0" &&
+      parentId === null &&
+      sessionId === null &&
+      firstSessionId === null &&
+      reminderTypes.length === 0;
 
     if (testMode && !overrideTo) {
       return errorResponse("Invalid test_to phone number", 400);
@@ -1181,6 +1191,19 @@ export async function POST(request: Request) {
           reminderTypes,
         })
       : null;
+    // Isolated so a group-side failure can't hide what the private run sent.
+    const groupSessionStats = includeGroupSessions
+      ? await processGroupSessionReminders({
+          dryRun,
+          markSent,
+          overrideTo,
+          lookaheadMinutes,
+          groupSessionId,
+        }).catch((error) => {
+          console.error("Error sending group session reminders:", error);
+          return { error: error instanceof Error ? error.message : "unknown" };
+        })
+      : null;
 
     return jsonResponse({
       success: true,
@@ -1202,6 +1225,7 @@ export async function POST(request: Request) {
       includeCustomMessages,
       stats,
       customMessageStats,
+      groupSessionStats,
     });
   } catch (error) {
     console.error("Error in send reminders cron:", error);

@@ -23,6 +23,7 @@ import IconButton from '@mui/material/IconButton';
 import Alert from '@mui/material/Alert';
 import Checkbox from '@mui/material/Checkbox';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import Autocomplete from '@mui/material/Autocomplete';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -55,8 +56,14 @@ interface GroupSession {
   player_count: number;
   prospect_count: number;
   total_paid_amount: number;
+  coaches: StaffOption[];
   created_at: string;
   updated_at: string;
+}
+
+interface StaffOption {
+  id: number;
+  name: string;
 }
 
 interface PlayerSignup {
@@ -95,6 +102,7 @@ interface SessionFormState {
   price: string;
   curriculum: string;
   max_players: string;
+  coach_ids: number[];
 }
 
 interface PlayerFormState {
@@ -142,6 +150,7 @@ const emptySessionForm: SessionFormState = {
   price: '',
   curriculum: '',
   max_players: String(DEFAULT_GROUP_SESSION_MAX_PLAYERS),
+  coach_ids: [],
 };
 
 const emptyPlayerForm: PlayerFormState = {
@@ -204,6 +213,7 @@ export default function GroupSessionsPage() {
   const [editingSession, setEditingSession] = useState<GroupSession | null>(null);
   const [sessionForm, setSessionForm] = useState<SessionFormState>(emptySessionForm);
   const [savingSession, setSavingSession] = useState(false);
+  const [staff, setStaff] = useState<StaffOption[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingQuickAddImage, setUploadingQuickAddImage] = useState(false);
   const [quickAddDialogOpen, setQuickAddDialogOpen] = useState(false);
@@ -255,6 +265,12 @@ export default function GroupSessionsPage() {
 
   useEffect(() => {
     fetchSessions();
+    fetch('/api/staff', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows: StaffOption[]) =>
+        setStaff(Array.isArray(rows) ? rows.map((row) => ({ id: row.id, name: row.name })) : [])
+      )
+      .catch((err) => console.error('Failed to load coaches', err));
   }, []);
 
   const fetchPlayers = async (groupSessionId: number) => {
@@ -299,6 +315,7 @@ export default function GroupSessionsPage() {
       price: session.price != null ? String(session.price) : '',
       curriculum: session.curriculum || '',
       max_players: String(session.max_players),
+      coach_ids: (session.coaches || []).map((coach) => coach.id),
     });
     setSessionDialogOpen(true);
   };
@@ -397,6 +414,7 @@ export default function GroupSessionsPage() {
         price: sessionForm.price.trim() ? Number(sessionForm.price) : null,
         curriculum: sessionForm.curriculum.trim() || null,
         max_players: Number(sessionForm.max_players),
+        coach_ids: sessionForm.coach_ids,
       };
 
       const endpoint = editingSession
@@ -820,6 +838,7 @@ export default function GroupSessionsPage() {
                 <TableCell>Session</TableCell>
                 <TableCell>Date</TableCell>
                 <TableCell>Location</TableCell>
+                <TableCell>Coaches</TableCell>
                 <TableCell>Price</TableCell>
                 <TableCell>Collected</TableCell>
                 <TableCell>Players</TableCell>
@@ -883,6 +902,19 @@ export default function GroupSessionsPage() {
                       )}
                     </TableCell>
                     <TableCell>{session.location || '—'}</TableCell>
+                    <TableCell>
+                      {session.coaches && session.coaches.length > 0 ? (
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                          {session.coaches.map((coach) => (
+                            <Chip key={coach.id} size="small" variant="outlined" label={coach.name} />
+                          ))}
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          Unassigned
+                        </Typography>
+                      )}
+                    </TableCell>
                     <TableCell>{session.price != null ? money.format(session.price) : '—'}</TableCell>
                     <TableCell>{money.format(session.total_paid_amount || 0)}</TableCell>
                     <TableCell>
@@ -1101,6 +1133,24 @@ export default function GroupSessionsPage() {
               }
               fullWidth
               required
+            />
+            <Autocomplete
+              multiple
+              options={staff}
+              getOptionLabel={(option) => option.name}
+              isOptionEqualToValue={(option, value) => option.id === value.id}
+              value={staff.filter((coach) => sessionForm.coach_ids.includes(coach.id))}
+              onChange={(_event, value) =>
+                setSessionForm((prev) => ({ ...prev, coach_ids: value.map((coach) => coach.id) }))
+              }
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Coaches"
+                  helperText="Newly added coaches get a text with the session details"
+                />
+              )}
+              sx={{ gridColumn: { xs: 'span 1', md: 'span 2' } }}
             />
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <Button

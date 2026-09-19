@@ -10,6 +10,12 @@ import {
   DEFAULT_GROUP_SESSION_IMAGE_URL,
   buildDefaultGroupSessionTitle,
 } from '@/lib/group-sessions';
+import {
+  getCoachesForGroupSessions,
+  notifyGroupSessionCoaches,
+  parseCoachIds,
+  setGroupSessionCoaches,
+} from '@/lib/group-session-coaches';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,7 +107,8 @@ async function getGroupSession(id: string) {
   );
 
   if (result.rows.length === 0) return null;
-  return mapGroupSession(result.rows[0] as GroupSessionRow);
+  const coaches = (await getCoachesForGroupSessions([id])).get(Number(id)) ?? [];
+  return { ...mapGroupSession(result.rows[0] as GroupSessionRow), coaches };
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -235,7 +242,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       values.push(maxPlayers);
     }
 
-    if (fields.length === 0) {
+    const hasCoachUpdate = 'coach_ids' in body;
+
+    if (fields.length === 0 && !hasCoachUpdate) {
       return errorResponse('No fields to update', 400);
     }
 
@@ -280,7 +289,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (result.rows.length === 0) return errorResponse('Group session not found', 404);
 
+    const newCoachIds = hasCoachUpdate
+      ? await setGroupSessionCoaches(id, parseCoachIds(body.coach_ids))
+      : [];
+
     await syncGroupSessionToGoogleCalendarsSafe(id, 'group session update');
+    await notifyGroupSessionCoaches(id, newCoachIds);
 
     const groupSession = await getGroupSession(id);
     return jsonResponse(groupSession);

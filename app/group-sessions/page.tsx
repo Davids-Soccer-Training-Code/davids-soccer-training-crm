@@ -668,6 +668,34 @@ export default function GroupSessionsPage() {
     }
   };
 
+  const markPlayerPaid = async (player: PlayerSignup) => {
+    if (!playersDialogSession) return;
+
+    // The API requires an amount when marking paid: use what they signed up at,
+    // falling back to the session price.
+    const amount = player.signup_price ?? playersDialogSession.price ?? 0;
+
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/player-signups/${player.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ has_paid: true, amount_paid: Number(amount) }),
+      });
+
+      if (!res.ok) {
+        const errorPayload = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(errorPayload?.error || 'Failed to mark player paid');
+      }
+
+      await Promise.all([fetchPlayers(playersDialogSession.id), fetchSessions()]);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'Failed to mark player paid');
+    }
+  };
+
   const deletePlayer = async (player: PlayerSignup) => {
     if (!playersDialogSession) return;
 
@@ -715,9 +743,9 @@ export default function GroupSessionsPage() {
           <TableRow>
             <TableCell sx={{ width: '26%' }}>Player</TableCell>
             <TableCell sx={{ width: '20%' }}>Contact</TableCell>
-            <TableCell sx={{ width: '28%' }}>Details</TableCell>
+            <TableCell sx={{ width: '24%' }}>Details</TableCell>
             <TableCell sx={{ width: '10%' }}>Spent</TableCell>
-            <TableCell sx={{ width: '8%' }}>Paid</TableCell>
+            <TableCell sx={{ width: '12%' }}>Paid</TableCell>
             <TableCell align="right" sx={{ width: '8%' }}>Actions</TableCell>
           </TableRow>
         </TableHead>
@@ -772,6 +800,17 @@ export default function GroupSessionsPage() {
                   color={player.has_paid ? 'success' : 'default'}
                   label={player.has_paid ? 'Paid' : 'Unpaid'}
                 />
+                {!player.has_paid && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="success"
+                    onClick={() => markPlayerPaid(player)}
+                    sx={{ mt: 0.5, px: 1, minWidth: 0, fontSize: 11, lineHeight: 1.3 }}
+                  >
+                    They paid for it
+                  </Button>
+                )}
               </TableCell>
               <TableCell align="right">
                 <IconButton
